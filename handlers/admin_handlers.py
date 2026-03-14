@@ -669,8 +669,13 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
         async with db.execute("SELECT COUNT(*) FROM anime_datas WHERE id=?", (anime_id,)) as cursor:
             uploaded_count = (await cursor.fetchone())[0]
 
+    next_ep = ep_num + 1
+    await state.update_data(ep_num=next_ep)
+
     await message.answer(
-        f"✅ {data['anime_nom']} — {ep_num}-qism qo'shildi! ({uploaded_count}/{anime_info[3] if anime_info else '?'} qism yuklandi)",
+        f"✅ <b>{data['anime_nom']}</b> — {ep_num}-qism qo'shildi! ({uploaded_count}/{anime_info[3] if anime_info else '?'} qism yuklandi)\n\n"
+        f"🎞 Endi <b>{next_ep}-qism</b> videosini yuboring:\n"
+        f"<i>To'xtatish uchun qaytish tugmasini yoki /panel ni bosing.</i>",
         reply_markup=panel_kb(), parse_mode="HTML"
     )
 
@@ -712,9 +717,9 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
                     parse_mode="HTML"
                 )
                 await message.answer(f"📢 Barcha {total_qism_int} qism yuklandi — kanal post qilindi!")
+                await state.clear()
             except Exception as e:
                 await message.answer(f"⚠️ Auto-post kanalga yuborilmadi: {e}\n(Bot u kanalda adminligini tekshiring)")
-    await state.clear()
 
 
 # ─── Adminlar boshqarish ──────────────────────────────────────────────────

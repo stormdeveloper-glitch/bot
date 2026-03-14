@@ -418,6 +418,14 @@ async def episode_list_callback(callback: CallbackQuery):
     file_id = episode_data[2]
     kb = episodes_kb(anime_id, ep_num, all_eps_list)
 
+    # O'tgan xabarning inline tugmalarini olib tashlaymiz
+    # Agar foydalanuvchi anime pagenation/qism tugmasini bosgan bo'lsa
+    if len(parts) >= 3:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
     try:
         await callback.message.answer_video(
             video=file_id,
