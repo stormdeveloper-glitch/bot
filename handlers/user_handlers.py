@@ -416,15 +416,25 @@ async def episode_list_callback(callback: CallbackQuery):
         return
 
     file_id = episode_data[2]
-    kb = episodes_kb(anime_id, ep_num, all_eps_list)
 
-    # O'tgan xabarning inline tugmalarini olib tashlaymiz
-    # Agar foydalanuvchi anime pagenation/qism tugmasini bosgan bo'lsa
-    if len(parts) >= 3:
-        try:
-            await callback.message.edit_reply_markup(reply_markup=None)
-        except Exception:
-            pass
+    # Qaysi sahifada ekanini avtomatik hisoblash
+    from keyboards import EPISODES_PER_PAGE
+    all_ep_nums = [int(e['qism']) for e in all_eps_list]
+    ep_index = all_ep_nums.index(ep_num) if ep_num in all_ep_nums else 0
+    page = ep_index // EPISODES_PER_PAGE
+
+    # Agar bu sahifaning OXIRGI qismi bo'lsa va keyingi sahifa bo'lsa — keyingi sahifaga o't
+    total_pages = max(1, (len(all_ep_nums) + EPISODES_PER_PAGE - 1) // EPISODES_PER_PAGE)
+    page_last_index = (page + 1) * EPISODES_PER_PAGE - 1
+    if ep_index == min(page_last_index, len(all_ep_nums) - 1) and page < total_pages - 1:
+        page = page + 1
+
+    kb = episodes_kb(anime_id, ep_num, all_eps_list, page)
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
     try:
         await callback.message.answer_video(
@@ -445,42 +455,31 @@ async def episode_list_callback(callback: CallbackQuery):
             await callback.answer(f"Xatolik: {e}", show_alert=True)
 
 
-# ─── Pagination (qismlar sahifalash) ─────────────────────────────────────────
+# ─── Qismlar sahifalash (pagination tugmalari) ────────────────────────────────
 
-@router.callback_query(F.data.startswith("pagenation="))
-async def pagination_callback(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("ep_page="))
+async def ep_page_callback(callback: CallbackQuery):
     parts = callback.data.split("=")
-    # format: pagenation={anime_id}={current_ep}={direction}
     anime_id = int(parts[1])
-    current_ep = int(parts[2])
-    direction = parts[3]  # "back" yoki "next"
+    page = int(parts[2])
+    current_ep = int(parts[3])
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT qism FROM anime_datas WHERE id=? ORDER BY qism ASC", (anime_id,)
         ) as cursor:
-            all_eps = [row[0] for row in await cursor.fetchall()]
+            all_eps = await cursor.fetchall()
+            all_eps_list = [{'qism': row[0]} for row in all_eps]
 
-    if not all_eps:
-        await callback.answer("Qismlar yo'q!", show_alert=True)
-        return
+    kb = episodes_kb(anime_id, current_ep, all_eps_list, page)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
 
-    if direction == "next":
-        target_ep = current_ep + 1
-    else:
-        target_ep = current_ep - 1
 
-    if target_ep not in all_eps:
-        await callback.answer(
-            "Bu oxirgi qism!" if direction == "next" else "Bu birinchi qism!",
-            show_alert=True
-        )
-        return
 
-    # Simulate clicking yuklanolish callback
-    fake_data = f"yuklanolish={anime_id}={target_ep}"
-    callback.data = fake_data
-    await episode_list_callback(callback)
 
 
 # ─── Menyu tugmalari ─────────────────────────────────────────────────────────
