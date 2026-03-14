@@ -61,16 +61,40 @@ def download_kb(anime_id: int):
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def episodes_kb(anime_id: int, current_ep: int, total_eps_data: list):
+EPISODES_PER_PAGE = 24
+
+def episodes_kb(anime_id: int, current_ep: int, total_eps_data: list, page: int = 0):
+    all_eps = [int(ep['qism']) for ep in total_eps_data]
+    total = len(all_eps)
+    total_pages = max(1, (total + EPISODES_PER_PAGE - 1) // EPISODES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * EPISODES_PER_PAGE
+    end = start + EPISODES_PER_PAGE
+    page_eps = all_eps[start:end]
+
     buttons = []
-    for ep in total_eps_data:
-        q = int(ep['qism'])
+    for q in page_eps:
         if q == current_ep:
             buttons.append(InlineKeyboardButton(text=f"[ {q} ]", callback_data="null"))
         else:
-            buttons.append(InlineKeyboardButton(text=f"{q}", callback_data=f"yuklanolish={anime_id}={q}={current_ep}"))
+            buttons.append(InlineKeyboardButton(text=str(q), callback_data=f"yuklanolish={anime_id}={q}"))
+
     rows = [buttons[i:i + 5] for i in range(0, len(buttons), 5)]
-    rows.append([InlineKeyboardButton(text="⬅Ortga", callback_data=f"loadAnime={anime_id}")])
+
+    # Sahifalar arasi navigatsiya
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️ Oldingi", callback_data=f"ep_page={anime_id}={page - 1}={current_ep}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="null"))
+        nav.append(InlineKeyboardButton(text="Keyingi ▶️", callback_data=f"ep_page={anime_id}={page + 1}={current_ep}"))
+    elif total_pages > 1:
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="null"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="⬅ Ortga", callback_data=f"loadAnime={anime_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def payment_confirm_kb(payment_id: int):
