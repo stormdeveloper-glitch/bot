@@ -17,7 +17,7 @@ async def is_super_admin(user_id: int) -> bool:
 async def check_subscription(user_id: int, bot: Bot) -> bool:
     # Logic to check subscription (social kanallar tekshirilmaydi — ular Telegram emas)
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT * FROM channels WHERE channelType IN ('public', 'request')") as cursor:
+        async with db.execute("SELECT * FROM channels WHERE channelType IN ('public', 'request', 'ongoing')") as cursor:
             channels = await cursor.fetchall()
             
     if not channels:
@@ -44,7 +44,7 @@ async def get_subscription_keyboard(user_id: int, bot: Bot):
     
     # Barcha majburiy kanallar (social ham ko'rsatiladi, lekin tekshirilmaydi)
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT * FROM channels WHERE channelType IN ('public', 'request', 'social')") as cursor:
+        async with db.execute("SELECT * FROM channels WHERE channelType IN ('public', 'request', 'social', 'ongoing')") as cursor:
             channels = await cursor.fetchall()
             
     buttons = []

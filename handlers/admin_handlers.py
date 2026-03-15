@@ -202,6 +202,7 @@ async def channels_handler(message: Message):
             elif ch[2] == "request": ctype = "Zayavka yopiq"
             elif ch[2] == "social": ctype = "Ijtimoiy"
             elif ch[2] == "anime": ctype = "Anime"
+            elif ch[2] == "ongoing": ctype = "🔸 Ongoing"
             text += f"[{ctype}] ID: <code>{ch[1]}</code> | 🔗 <a href='{ch[3]}'>Link</a>\n"
 
     buttons = InlineKeyboardMarkup(inline_keyboard=[
@@ -209,6 +210,7 @@ async def channels_handler(message: Message):
         [InlineKeyboardButton(text="➕ Zayavka kanal (yopiq)", callback_data="addChannelType=request")],
         [InlineKeyboardButton(text="➕ Ijtimoiy tarmoq", callback_data="addChannelType=social")],
         [InlineKeyboardButton(text="➕ Anime kanal", callback_data="addChannelType=anime")],
+        [InlineKeyboardButton(text="➕ 🔸 Ongoing kanal", callback_data="addChannelType=ongoing")],
         [InlineKeyboardButton(text="🗑 Kanal o'chirish", callback_data="removeChannel")]
     ])
     await message.answer(text, reply_markup=buttons, parse_mode="HTML")
@@ -679,9 +681,9 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
         reply_markup=panel_kb(), parse_mode="HTML"
     )
 
-    # Auto-post: FAQAT barcha qismlar to'liq yuklanganda
+    # Auto-post logikasi
     from config import MAIN_CHANNEL_ID, BOT_USERNAME, MAIN_CHANNEL_USERNAME
-    if MAIN_CHANNEL_ID and anime_info:
+    if anime_info:
         nom, janri, rams, total_qism, status, fandub = anime_info
         fandub = fandub or "Ovoz berilmagan"
 
@@ -690,8 +692,47 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
         except (ValueError, TypeError):
             total_qism_int = None
 
-        # Agar barcha qismlar yuklangan bo'lsa — post chiqar
-        if total_qism_int and uploaded_count >= total_qism_int:
+        # ── Ongoing: qism raqami dastlabki miqdordan oshgan bo'lsa ────────
+        if total_qism_int and ep_num > total_qism_int:
+            async with aiosqlite.connect(DB_PATH) as db_ch:
+                async with db_ch.execute(
+                    "SELECT channelId FROM channels WHERE channelType='ongoing' LIMIT 1"
+                ) as cur_ch:
+                    ongoing_ch = await cur_ch.fetchone()
+
+            if ongoing_ch:
+                ongoing_channel_id = ongoing_ch[0]
+                ongoing_text = (
+                    f"<b>{nom}</b>\n"
+                    f"╭───────────\n"
+                    f"├ <b>Holati:</b> 🔸 OnGoing\n"
+                    f"├ <b>Yangi qism:</b> {ep_num}-qism 🆕\n"
+                    f"├ <b>Janrlari:</b> {janri}\n"
+                    f"├ <b>Ovoz:</b> {fandub}\n"
+                    f"╰───────────"
+                )
+                watch_btn = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text=f"▶️ {ep_num}-qismni ko'rish",
+                        url=f"https://t.me/{BOT_USERNAME}?start={anime_id}_{ep_num}"
+                    )]
+                ])
+                try:
+                    await bot.send_photo(
+                        chat_id=ongoing_channel_id,
+                        photo=rams,
+                        caption=ongoing_text,
+                        reply_markup=watch_btn,
+                        parse_mode="HTML"
+                    )
+                    await message.answer(f"📢 Ongoing kanal: {ep_num}-qism uchun post yuborildi!")
+                except Exception as e:
+                    await message.answer(f"⚠️ Ongoing kanalga post yuborilmadi: {e}")
+            else:
+                await message.answer("⚠️ Ongoing kanal topilmadi! 📢 Kanallar bo'limidan ongoing kanal qo'shing.")
+
+        # ── Barcha qismlar to'liq yuklanganda asosiy kanalga post ──────────
+        if MAIN_CHANNEL_ID and total_qism_int and uploaded_count >= total_qism_int:
             post_text = (
                 f"<b>{nom}</b>\n"
                 f"╭───────────\n"

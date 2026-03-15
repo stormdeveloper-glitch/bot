@@ -72,40 +72,53 @@ async def command_start_handler(message: Message, state: FSMContext, bot: Bot):
 
     await state.clear()
 
-    # Referal bonus
+    # Start parametrini tekshirish
     args = message.text.split()
-    if len(args) > 1 and args[1].isdigit():
-        ref_id = int(args[1])
-        if ref_id != user_id:
-            async with aiosqlite.connect(DB_PATH) as db:
-                async with db.execute("SELECT refid FROM users WHERE user_id=?", (user_id,)) as c:
-                    row = await c.fetchone()
-                if row and row[0] is None:
-                    async with db.execute(
-                        "SELECT value FROM bot_settings WHERE key='referral_bonus'"
-                    ) as c:
-                        bonus_row = await c.fetchone()
-                    bonus = int(bonus_row[0]) if bonus_row else 500
-                    await db.execute(
-                        "UPDATE users SET refid=?, pul2=pul2+? WHERE user_id=?",
-                        (ref_id, bonus, user_id)
-                    )
-                    await db.execute(
-                        "UPDATE users SET pul=pul+?, odam=odam+1 WHERE user_id=?",
-                        (bonus, ref_id)
-                    )
-                    await db.commit()
-                    try:
-                        await bot.send_message(
-                            ref_id,
-                            f"🎉 Yangi taklif! Foydalanuvchi <code>{user_id}</code> botga qo'shildi.\n"
-                            f"💰 Sizga <b>{bonus}</b> so'm bonus qo'shildi!",
-                            parse_mode="HTML"
+    if len(args) > 1:
+        param = args[1]
+
+        # Format: ANIMEID_EPNUM — to'g'ridan-to'g'ri qism ochish (ongoing tugma)
+        if "_" in param:
+            parts = param.split("_", 1)
+            if parts[0].isdigit() and parts[1].isdigit():
+                anime_id_p = int(parts[0])
+                ep_num_p = int(parts[1])
+                await show_episode_direct(message, anime_id_p, ep_num_p)
+                return
+
+        # Format: faqat raqam — referal yoki anime ko'rsatish
+        if param.isdigit():
+            ref_id = int(param)
+            if ref_id != user_id:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    async with db.execute("SELECT refid FROM users WHERE user_id=?", (user_id,)) as c:
+                        row = await c.fetchone()
+                    if row and row[0] is None:
+                        async with db.execute(
+                            "SELECT value FROM bot_settings WHERE key='referral_bonus'"
+                        ) as c:
+                            bonus_row = await c.fetchone()
+                        bonus = int(bonus_row[0]) if bonus_row else 500
+                        await db.execute(
+                            "UPDATE users SET refid=?, pul2=pul2+? WHERE user_id=?",
+                            (ref_id, bonus, user_id)
                         )
-                    except:
-                        pass
-        await show_anime(message, int(args[1]))
-        return
+                        await db.execute(
+                            "UPDATE users SET pul=pul+?, odam=odam+1 WHERE user_id=?",
+                            (bonus, ref_id)
+                        )
+                        await db.commit()
+                        try:
+                            await bot.send_message(
+                                ref_id,
+                                f"🎉 Yangi taklif! Foydalanuvchi <code>{user_id}</code> botga qo'shildi.\n"
+                                f"💰 Sizga <b>{bonus}</b> so'm bonus qo'shildi!",
+                                parse_mode="HTML"
+                            )
+                        except:
+                            pass
+            await show_anime(message, ref_id)
+            return
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -145,6 +158,54 @@ async def check_subscription_callback(callback: CallbackQuery, bot: Bot):
 
 
 # ─── Anime ko'rsatish (ichki funksiya) ────────────────────────────────────────
+
+async def show_episode_direct(message: Message, anime_id: int, ep_num: int):
+    """Ongoing tugmadan kelganda to'g'ridan-to'g'ri qismni yuboradi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT * FROM anime_datas WHERE id=? AND qism=?", (anime_id, ep_num)
+        ) as cursor:
+            episode = await cursor.fetchone()
+        async with db.execute("SELECT nom FROM animelar WHERE id=?", (anime_id,)) as cursor:
+            anime_row = await cursor.fetchone()
+        async with db.execute(
+            "SELECT qism FROM anime_datas WHERE id=? ORDER BY qism ASC", (anime_id,)
+        ) as cursor:
+            all_eps = await cursor.fetchall()
+            all_eps_list = [{'qism': row[0]} for row in all_eps]
+
+    if not episode or not anime_row:
+        await message.answer("❌ Qism topilmadi.")
+        return
+
+    anime_name = anime_row[0]
+    file_id = episode[2]
+
+    from keyboards import episodes_kb, EPISODES_PER_PAGE
+    all_ep_nums = [e['qism'] for e in all_eps_list]
+    ep_index = all_ep_nums.index(ep_num) if ep_num in all_ep_nums else 0
+    page = ep_index // EPISODES_PER_PAGE
+
+    kb = episodes_kb(anime_id, ep_num, all_eps_list, page)
+
+    try:
+        await message.answer_video(
+            video=file_id,
+            caption=f"<b>{anime_name}</b>\n<i>{ep_num} - qism</i>",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
+    except Exception:
+        try:
+            await message.answer_document(
+                document=file_id,
+                caption=f"<b>{anime_name}</b>\n<i>{ep_num} - qism</i>",
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            await message.answer(f"❌ Qismni yuklashda xatolik: {e}")
+
 
 async def show_anime(message: Message, anime_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
