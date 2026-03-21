@@ -429,6 +429,17 @@ async def api_ai_chat(request):
         return web.json_response({"ok": False, "error": str(e)}, status=200)
 
 
+async def api_payments(request):
+    """So'nggi 10 ta to'lov."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT user_id, amount, status FROM payments ORDER BY id DESC LIMIT 10"
+        ) as c:
+            rows = await c.fetchall()
+    payments = [{"user_id": r[0], "amount": r[1], "status": r[2]} for r in rows]
+    return web.json_response({"payments": payments})
+
+
 def create_app():
     app = web.Application(client_max_size=1024**3)
     app.router.add_get("/", index)
