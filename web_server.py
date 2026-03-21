@@ -355,30 +355,48 @@ async def api_stats(request):
     return web.json_response({"users": users, "vip": vip, "animes": animes, "eps": eps})
 
 
+_ai_limit_data = {}  # {ip: [timestamps]}
+
 async def api_ai_chat(request):
-    """AI Chatbot ChatGPT orqali savollarga javob beradi."""
+    """AI Chatbot ChatGPT orqali savollarga javob beradi (Qattiq limitlar bilan)."""
     from config import OPENAI_API_KEY
+    import time
     try:
         body = await request.json()
-        user_msg = body.get("message", "")
+        user_msg = (body.get("message") or "").strip()
         if not user_msg:
             return web.json_response({"ok": False, "error": "Xabar bo'sh"}, status=400)
+
+        # Qattiq Limit: IP bo'yicha 10 daqiqada 3 ta xabar
+        ip = request.remote
+        now = time.time()
+        user_ts = _ai_limit_data.get(ip, [])
+        user_ts = [ts for ts in user_ts if now - ts < 600] # 10 daqiqa
+        
+        if len(user_ts) >= 3:
+            return web.json_response({
+                "ok": False, 
+                "error": "Juda qat'iy limit: 10 daqiqada faqat 3 ta xabar yuborish mumkin!"
+            }, status=200)
+
+        # Uzunlik limiti: 200 belgi
+        if len(user_msg) > 200:
+            return web.json_response({
+                "ok": False, 
+                "error": "Xabar juda uzun (maksimal 200 belgi)!"
+            }, status=200)
 
         if not OPENAI_API_KEY:
              return web.json_response({"ok": True, "reply": "Hozircha AI kaliti o'rnatilmagan. Iltimos, Railway panelida OPENAI_API_KEY o'rnatilganini tekshiring."})
 
-        # Kontekst: Statistika va bir nechta animelar
+        # Kontekstni ixchamlashtirish (token tejash)
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT COUNT(*) FROM users") as c:
                 users = (await c.fetchone())[0]
-            async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 20") as c:
+            async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 10") as c:
                 top_animes = [r[0] for r in await c.fetchall()]
 
-        system_prompt = f"""Siz 'ANIME UZ' portalining aqlli yordamchisiz. 
-Tizim statistikasi: {users} ta foydalanuvchi bor.
-Eng ko'p ko'rilgan 20 ta anime: {', '.join(top_animes)}.
-Sizning vazifangiz foydalanuvchilarga animelar haqida ma'lumot berish va ularning savollariga o'zbek tilida chiroyli javob berish. 
-Agar foydalanuvchi anime topishni so'rasa, yuqoridagi ro'yxatdan yoki umumiy anime bilimingizdan foydalaning."""
+        system_prompt = f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users} users. Top: {', '.join(top_animes)}. Faqat o'zbek tilida qisqa javob bering."
 
         payload = {
             "model": "gpt-3.5-turbo",
@@ -386,7 +404,8 @@ Agar foydalanuvchi anime topishni so'rasa, yuqoridagi ro'yxatdan yoki umumiy ani
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
             ],
-            "temperature": 0.7
+            "max_tokens": 150, # Javob uzunligi limiti
+            "temperature": 0.5
         }
 
         async with aiohttp.ClientSession() as session:
@@ -394,15 +413,17 @@ Agar foydalanuvchi anime topishni so'rasa, yuqoridagi ro'yxatdan yoki umumiy ani
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 json=payload,
-                timeout=30
+                timeout=20
             ) as r:
                 res_data = await r.json()
 
         if "choices" in res_data:
+            user_ts.append(now)
+            _ai_limit_data[ip] = user_ts
             reply = res_data["choices"][0]["message"]["content"]
             return web.json_response({"ok": True, "reply": reply})
         else:
-            return web.json_response({"ok": False, "error": res_data.get("error", {}).get("message", "OpenAI xatosi")})
+            return web.json_response({"ok": False, "error": "API xatosi"})
 
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=200)
