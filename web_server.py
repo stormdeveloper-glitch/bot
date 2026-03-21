@@ -394,12 +394,16 @@ async def api_ai_chat(request):
             async with db.execute("SELECT COUNT(*) FROM users") as c:
                 users = (await c.fetchone())[0]
             
-            # Foydalanuvchi xabaridan anime qidirish
+            # Adminlar ma'lumotlari
+            async with db.execute("SELECT name, username FROM admins LIMIT 5") as c:
+                admins = [f"{r[0]} (@{r[1]})" for r in await c.fetchall()]
+
+            # Foydalanuvchi xabaridan anime qidirish (Rasm bilan)
             keywords = [w for w in user_msg.split() if len(w) >= 3]
             matched_animes = []
             if keywords:
-                for kw in keywords[:5]: # Maksimal 5 ta so'zdan qidirish
-                    async with db.execute("SELECT id, nom FROM animelar WHERE nom LIKE ? LIMIT 3", (f'%{kw}%',)) as c:
+                for kw in keywords[:5]:
+                    async with db.execute("SELECT id, nom, rams_url FROM animelar WHERE nom LIKE ? LIMIT 3", (f'%{kw}%',)) as c:
                         rows = await c.fetchall()
                         for r in rows:
                             if r not in matched_animes: matched_animes.append(r)
@@ -407,12 +411,14 @@ async def api_ai_chat(request):
             async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 5") as c:
                 top_animes = [r[0] for r in await c.fetchall()]
 
-        matched_str = ", ".join([f"{r[1]} (ID: {r[0]})" for r in matched_animes[:8]])
+        matched_str = ", ".join([f"{r[1]} (ID:{r[0]}, Img:{r[2]})" for r in matched_animes[:8]])
         system_prompt = (
-            f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users} users. "
+            f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users}. "
+            f"Adminlar: {', '.join(admins)}. "
             f"Topilgan animelar: {matched_str or 'yoq'}. "
-            f"Agar aniq anime topilgan bo'lsa, javob oxirida FAQAT [SHOW_ANIME:ID] formatida ID ni qo'shing. "
-            f"Faqat o'zbekcha qisqa javob bering."
+            f"QOIDALAR: 1. Anime tavsiya qilsang FAQAT [ANIME_CARD:ID|Nom|RasmURL] formatini matn oxirida ishlating. "
+            f"2. Adminlar haqida so'rashsa, yuqoridagi ro'yxatdan foydalaning. "
+            f"3. Faqat o'zbek tilida qisqa javob bering."
         )
 
         payload = {
