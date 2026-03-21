@@ -367,16 +367,16 @@ async def api_ai_chat(request):
         if not user_msg:
             return web.json_response({"ok": False, "error": "Xabar bo'sh"}, status=400)
 
-        # Qattiq Limit: IP bo'yicha 10 daqiqada 3 ta xabar
+        # Qattiq Limit: IP bo'yicha 24 soatda (bir kunda) 10 ta xabar
         ip = request.remote
         now = time.time()
         user_ts = _ai_limit_data.get(ip, [])
-        user_ts = [ts for ts in user_ts if now - ts < 600] # 10 daqiqa
+        user_ts = [ts for ts in user_ts if now - ts < 86400] # 24 soat
         
-        if len(user_ts) >= 3:
+        if len(user_ts) >= 10:
             return web.json_response({
                 "ok": False, 
-                "error": "Juda qat'iy limit: 10 daqiqada faqat 3 ta xabar yuborish mumkin!"
+                "error": "Juda qat'iy limit: Bir kunda faqat 10 ta xabar yuborish mumkin!"
             }, status=200)
 
         # Uzunlik limiti: 200 belgi
