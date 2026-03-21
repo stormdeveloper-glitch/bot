@@ -357,53 +357,32 @@ async def api_stats(request):
 
 _ai_limit_data = {}  # {ip: [timestamps]}
 
-async def api_ai_chat(request):
-    """AI Chatbot ChatGPT orqali savollarga javob beradi (Qattiq limitlar bilan)."""
+async def get_ai_reply(user_msg: str):
+    """AI mantiqi — ham web, ham bot uchun umumiy."""
     from config import OPENAI_API_KEY
-    import time
+    if not OPENAI_API_KEY:
+        return "Hozircha AI kaliti o'rnatilmagan."
+
     try:
-        body = await request.json()
-        user_msg = (body.get("message") or "").strip()
-        if not user_msg:
-            return web.json_response({"ok": False, "error": "Xabar bo'sh"}, status=400)
-
-        # Qattiq Limit: IP bo'yicha 24 soatda (bir kunda) 10 ta xabar
-        ip = request.remote
-        now = time.time()
-        user_ts = _ai_limit_data.get(ip, [])
-        user_ts = [ts for ts in user_ts if now - ts < 86400] # 24 soat
-        
-        if len(user_ts) >= 10:
-            return web.json_response({
-                "ok": False, 
-                "error": "Juda qat'iy limit: Bir kunda faqat 10 ta xabar yuborish mumkin!"
-            }, status=200)
-
-        # Uzunlik limiti: 200 belgi
-        if len(user_msg) > 200:
-            return web.json_response({
-                "ok": False, 
-                "error": "Xabar juda uzun (maksimal 200 belgi)!"
-            }, status=200)
-
-        if not OPENAI_API_KEY:
-             return web.json_response({"ok": True, "reply": "Hozircha AI kaliti o'rnatilmagan. Iltimos, Railway panelida OPENAI_API_KEY o'rnatilganini tekshiring."})
-
-        # Kontekstni ixchamlashtirish (token tejash)
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT COUNT(*) FROM users") as c:
                 users = (await c.fetchone())[0]
             
-            # Adminlar ma'lumotlari (SQL xatoligini to'g'irlash)
             from config import ADMIN_IDS, SUPER_ADMIN_ID
-            admins_info = f"Asosiy admin: {SUPER_ADMIN_ID}. Yordamchi adminlar: {', '.join(map(str, ADMIN_IDS))}. Jami {len(ADMIN_IDS)+1} ta."
+            admins_info = f"Asosiy admin: {SUPER_ADMIN_ID}. Jami {len(ADMIN_IDS)+1} ta."
 
-            # Foydalanuvchi xabaridan anime qidirish (Rasm bilan)
+            async with db.execute("SELECT key, value FROM bot_settings") as c:
+                settings = {r[0]: r[1] for r in await c.fetchall()}
+            async with db.execute("SELECT key, value FROM bot_texts") as c:
+                texts = {r[0]: r[1] for r in await c.fetchall()}
+            
+            bot_info = f"VIP narxi: {settings.get('vip_price')} {settings.get('vip_currency')}. Qo'llanma: {texts.get('guide', '')[:100]}..."
+
             keywords = [w for w in user_msg.split() if len(w) >= 3]
             matched_animes = []
             if keywords:
                 for kw in keywords[:5]:
-                    async with db.execute("SELECT id, nom, rams_url FROM animelar WHERE nom LIKE ? LIMIT 3", (f'%{kw}%',)) as c:
+                    async with db.execute("SELECT id, nom, rams FROM animelar WHERE nom LIKE ? LIMIT 3", (f'%{kw}%',)) as c:
                         rows = await c.fetchall()
                         for r in rows:
                             if r not in matched_animes: matched_animes.append(r)
@@ -411,14 +390,13 @@ async def api_ai_chat(request):
             async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 5") as c:
                 top_animes = [r[0] for r in await c.fetchall()]
 
-        matched_str = ", ".join([f"{r[1]} (ID:{r[0]}, Img:{r[2]})" for r in matched_animes[:8]])
+        matched_str = ", ".join([f"{r[1]} (ID:{r[0]}, Img:/poster/{r[0]})" for r in matched_animes[:8]])
         system_prompt = (
             f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users}. "
-            f"Adminlar: {admins_info}. "
-            f"Topilgan animelar: {matched_str or 'yoq'}. "
-            f"QOIDALAR: 1. Anime tavsiya qilsang FAQAT [ANIME_CARD:ID|Nom|RasmURL] formatini matn oxirida ishlating. "
-            f"2. Adminlar haqida so'rashsa, yuqoridagi ro'yxatdan foydalaning. "
-            f"3. Faqat o'zbek tilida qisqa javob bering."
+            f"Bot: {bot_info}. Adminlar: {admins_info}. "
+            f"Topilganlar: {matched_str or 'yoq'}. "
+            f"QOIDALAR: 1. Anime uchun FAQAT [ANIME_CARD:ID|Nom|RasmURL] formatini ishlating. "
+            f"2. Faqat o'zbek tilida qisqa javob bering."
         )
 
         payload = {
@@ -441,15 +419,36 @@ async def api_ai_chat(request):
                 res_data = await r.json()
 
         if "choices" in res_data:
-            user_ts.append(now)
-            _ai_limit_data[ip] = user_ts
-            reply = res_data["choices"][0]["message"]["content"]
-            return web.json_response({"ok": True, "reply": reply})
-        else:
-            return web.json_response({"ok": False, "error": "API xatosi"})
+            return res_data["choices"][0]["message"]["content"]
+        return "AI xatosi (API)."
+    except Exception as e:
+        return f"Xatolik: {str(e)}"
+
+
+async def api_ai_chat(request):
+    """Web UI uchun AI chat endpointi."""
+    import time
+    try:
+        body = await request.json()
+        user_msg = (body.get("message") or "").strip()
+        if not user_msg:
+            return web.json_response({"ok": False, "error": "Xabar bo'sh"}, status=400)
+
+        ip = request.remote
+        now = time.time()
+        user_ts = _ai_limit_data.get(ip, [])
+        user_ts = [ts for ts in user_ts if now - ts < 86400]
+        
+        if len(user_ts) >= 10:
+            return web.json_response({"ok": False, "error": "Kunlik limit (10 ta) tugadi!"})
+
+        reply = await get_ai_reply(user_msg)
+        user_ts.append(now)
+        _ai_limit_data[ip] = user_ts
+        return web.json_response({"ok": True, "reply": reply})
 
     except Exception as e:
-        return web.json_response({"ok": False, "error": str(e)}, status=200)
+        return web.json_response({"ok": False, "error": str(e)})
 
 
 async def api_payments(request):

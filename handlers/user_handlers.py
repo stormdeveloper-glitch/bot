@@ -1528,3 +1528,47 @@ async def handle_anime_code(message: Message, state: FSMContext, bot: Bot):
 
     anime_id = int(message.text)
     await show_anime(message, anime_id)
+@router.message(Command("ai"))
+async def ai_handler(message: Message):
+    """AI bilan muloqot buyrug'i."""
+    user_msg = message.text.replace("/ai", "").strip()
+    if not user_msg:
+        await message.answer("<b>AI yordamchi:</b>\nMenga biron bir savol bering yoki anime topishni so'rang.\n\nMasalan: <code>/ai Yozakura oilasi haqida ma'lumot ber</code>", parse_mode="HTML")
+        return
+
+    # Userga o'ylayotganini bildirish
+    wait_msg = await message.answer("⏳ <i>AI o'ylamoqda...</i>", parse_mode="HTML")
+
+    try:
+        from web_server import get_ai_reply
+        reply = await get_ai_reply(user_msg)
+        await wait_msg.delete()
+
+        # [ANIME_CARD:ID|Nom|RasmURL] formatini tekshirish
+        import re
+        match = re.search(r'\[ANIME_CARD:(.*?)\]', reply)
+        if match:
+            parts = match.group(1).split('|')
+            if len(parts) >= 2:
+                anime_id = parts[0]
+                name = parts[1]
+                reply_text = reply.replace(match.group(0), "").strip()
+
+                async with aiosqlite.connect(DB_PATH) as db:
+                    async with db.execute("SELECT rams FROM animelar WHERE id=?", (anime_id,)) as c:
+                        row = await c.fetchone()
+                
+                if row and row[0]:
+                    rams = row[0]
+                    from keyboards import InlineKeyboardMarkup, InlineKeyboardButton
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎬 KO'RISH", callback_query_data=f"info_{anime_id}")]])
+                    
+                    try:
+                        await message.answer_photo(photo=rams, caption=f"<b>{name}</b>\n\n{reply_text}", reply_markup=kb, parse_mode="HTML")
+                        return
+                    except Exception:
+                        pass # Agar rasm yuborib bo'lmasa matn ko'rinishida yuboramiz
+
+        await message.answer(reply)
+    except Exception as e:
+        await wait_msg.edit_text(f"❌ AI bilan bog'lanishda xatolik: {e}")
