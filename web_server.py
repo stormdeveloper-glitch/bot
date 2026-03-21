@@ -394,9 +394,9 @@ async def api_ai_chat(request):
             async with db.execute("SELECT COUNT(*) FROM users") as c:
                 users = (await c.fetchone())[0]
             
-            # Adminlar ma'lumotlari
-            async with db.execute("SELECT name, username FROM admins LIMIT 5") as c:
-                admins = [f"{r[0]} (@{r[1]})" for r in await c.fetchall()]
+            # Adminlar ma'lumotlari (SQL xatoligini to'g'irlash)
+            from config import ADMIN_IDS, SUPER_ADMIN_ID
+            admins_info = f"Asosiy admin: {SUPER_ADMIN_ID}. Yordamchi adminlar: {', '.join(map(str, ADMIN_IDS))}. Jami {len(ADMIN_IDS)+1} ta."
 
             # Foydalanuvchi xabaridan anime qidirish (Rasm bilan)
             keywords = [w for w in user_msg.split() if len(w) >= 3]
@@ -414,7 +414,7 @@ async def api_ai_chat(request):
         matched_str = ", ".join([f"{r[1]} (ID:{r[0]}, Img:{r[2]})" for r in matched_animes[:8]])
         system_prompt = (
             f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users}. "
-            f"Adminlar: {', '.join(admins)}. "
+            f"Adminlar: {admins_info}. "
             f"Topilgan animelar: {matched_str or 'yoq'}. "
             f"QOIDALAR: 1. Anime tavsiya qilsang FAQAT [ANIME_CARD:ID|Nom|RasmURL] formatini matn oxirida ishlating. "
             f"2. Adminlar haqida so'rashsa, yuqoridagi ro'yxatdan foydalaning. "
