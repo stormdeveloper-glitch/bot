@@ -2280,6 +2280,71 @@
       clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px));
       border-color: var(--accent-glow);
     }
+
+    .ai-suggest-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      width: fit-content;
+      animation: bounceIn 0.5s ease both;
+    }
+
+    .ai-suggest-btn:hover {
+      transform: scale(1.05) translateY(-2px);
+      filter: brightness(1.1);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    @keyframes bounceIn {
+      0% {
+        transform: scale(0.3);
+        opacity: 0;
+      }
+
+      50% {
+        transform: scale(1.05);
+        opacity: 1;
+      }
+
+      70% {
+        transform: scale(0.9);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    .card-watch-btn {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      color: var(--text);
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .anime-card:hover .card-watch-btn {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+    }
   </style>
   </style>
 </head>
@@ -2437,6 +2502,7 @@
       ${img}<div class="card-body">
         <div class="card-title">${a.nom}</div>
         <div class="card-meta">${st}<span class="tag tag-ep">${a.ep_count || 0} qism</span>${a.qidiruv ? `<span class="tag tag-views">👁 ${a.qidiruv}</span>` : ''}</div>
+        <div class="card-watch-btn">▶️ Ko'rish</div>
       </div></div>`;
       }).join('');
     }
@@ -2684,8 +2750,25 @@
       const msgs = document.getElementById('chatMsgs');
       const div = document.createElement('div');
       div.className = 'msg ' + type;
+
+      const match = text.match(/\[SHOW_ANIME:(\d+)\]/);
+      let animeId = null;
+      if (match) {
+        animeId = match[1];
+        text = text.replace(match[0], '').trim();
+      }
+
       div.textContent = text;
       msgs.appendChild(div);
+
+      if (animeId) {
+        const btn = document.createElement('div');
+        btn.className = 'ai-suggest-btn';
+        btn.innerHTML = '<span>▶️ <b>Ko\'rish</b></span>';
+        btn.onclick = (e) => { e.stopPropagation(); openModal(parseInt(animeId)); };
+        msgs.appendChild(btn);
+      }
+
       msgs.scrollTop = msgs.scrollHeight;
       return div;
     }

@@ -393,10 +393,27 @@ async def api_ai_chat(request):
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute("SELECT COUNT(*) FROM users") as c:
                 users = (await c.fetchone())[0]
-            async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 10") as c:
+            
+            # Foydalanuvchi xabaridan anime qidirish
+            keywords = [w for w in user_msg.split() if len(w) >= 3]
+            matched_animes = []
+            if keywords:
+                for kw in keywords[:5]: # Maksimal 5 ta so'zdan qidirish
+                    async with db.execute("SELECT id, nom FROM animelar WHERE nom LIKE ? LIMIT 3", (f'%{kw}%',)) as c:
+                        rows = await c.fetchall()
+                        for r in rows:
+                            if r not in matched_animes: matched_animes.append(r)
+
+            async with db.execute("SELECT nom FROM animelar ORDER BY qidiruv DESC LIMIT 5") as c:
                 top_animes = [r[0] for r in await c.fetchall()]
 
-        system_prompt = f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users} users. Top: {', '.join(top_animes)}. Faqat o'zbek tilida qisqa javob bering."
+        matched_str = ", ".join([f"{r[1]} (ID: {r[0]})" for r in matched_animes[:8]])
+        system_prompt = (
+            f"Siz 'ANIME UZ' yordamchisisiz. Stats: {users} users. "
+            f"Topilgan animelar: {matched_str or 'yoq'}. "
+            f"Agar aniq anime topilgan bo'lsa, javob oxirida FAQAT [SHOW_ANIME:ID] formatida ID ni qo'shing. "
+            f"Faqat o'zbekcha qisqa javob bering."
+        )
 
         payload = {
             "model": "gpt-3.5-turbo",
@@ -404,8 +421,8 @@ async def api_ai_chat(request):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
             ],
-            "max_tokens": 150, # Javob uzunligi limiti
-            "temperature": 0.5
+            "max_tokens": 150, 
+            "temperature": 0.4
         }
 
         async with aiohttp.ClientSession() as session:
