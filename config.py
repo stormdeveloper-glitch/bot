@@ -11,6 +11,11 @@ MAIN_CHANNEL_ID = os.getenv("MAIN_CHANNEL_ID")
 MAIN_CHANNEL_USERNAME = os.getenv("MAIN_CHANNEL_USERNAME", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Google OAuth
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "")  # https://yoursite.railway.app/callback
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Railway Volume uchun yo'lni tekshirish
