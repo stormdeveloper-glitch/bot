@@ -675,6 +675,18 @@ html{scroll-behavior:smooth}
       <button class="tbtn" onclick="showPage('report',null)" title="Shikoyat / Taklif">📩</button>
       <button class="tbtn" onclick="showPage('settings',null)" title="Sozlamalar">⚙️</button>
       <button class="tbtn" onclick="toggleAi()" title="AI">🤖</button>
+      <!-- Google Login/User badge -->
+      <div id="topbar-auth">
+        <button id="topbar-login-btn" class="tbtn" onclick="topbarLogin()" title="Google bilan kirish" style="display:none;align-items:center;gap:5px;font-size:.7rem;padding:5px 10px;border-radius:20px;background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.3);color:var(--accent);font-weight:600;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.78l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Kirish
+        </button>
+        <div id="topbar-user" style="display:none;align-items:center;gap:6px;background:var(--card-bg);border:1px solid var(--border);border-radius:40px;padding:4px 10px 4px 4px;cursor:pointer" onclick="showPage('game',null)" title="O'yin sahifasiga o'tish">
+          <img id="topbar-avatar" style="width:26px;height:26px;border-radius:50%;object-fit:cover" src="" alt="">
+          <span id="topbar-uname" style="font-size:.75rem;font-weight:600;color:var(--text);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+          <button onclick="event.stopPropagation();topbarLogout()" style="font-size:.65rem;color:var(--muted);background:none;border:none;cursor:pointer;padding:0 0 0 2px" title="Chiqish">✕</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1519,14 +1531,49 @@ function nextRound() {
   _renderBoard();
 }
 
-async function gameLogout() {
+// ── TOPBAR AUTH ──────────────────────────────────────────────────
+function _getGoogleAuthUrl() {
+  const clientId = document.querySelector('meta[name="google-client-id"]')?.content || '';
+  const redirectUri = window.location.origin + '/callback';
+  const scope = 'openid profile email';
+  return `https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&access_type=offline`;
+}
+
+function topbarLogin() {
+  const url = _getGoogleAuthUrl();
+  if (!url.includes('client_id=&')) {
+    window.location.href = url;
+  } else {
+    alert("GOOGLE_CLIENT_ID sozlanmagan. Railway Variables ni tekshiring.");
+  }
+}
+
+async function topbarLogout() {
   await fetch('/api/auth/logout', { method: 'POST', headers: _authHeaders() }).catch(()=>{});
   localStorage.removeItem('az_token');
   localStorage.removeItem('az_user');
   _gToken = ''; _gUser = null; _gGameId = null; _gState = null;
+  _refreshTopbarAuth();
   _refreshUserBadge();
   if (document.getElementById('page-game').classList.contains('active')) {
     _renderLoginScreen();
+  }
+}
+
+function _refreshTopbarAuth() {
+  const loginBtn = document.getElementById('topbar-login-btn');
+  const userDiv  = document.getElementById('topbar-user');
+  if (!loginBtn || !userDiv) return;
+  if (_gUser) {
+    loginBtn.style.display = 'none';
+    userDiv.style.display  = 'flex';
+    const av = document.getElementById('topbar-avatar');
+    if (av) { av.src = _gUser.picture || ''; av.style.display = _gUser.picture ? 'block' : 'none'; }
+    const un = document.getElementById('topbar-uname');
+    if (un) un.textContent = _gUser.name || '';
+  } else {
+    loginBtn.style.display = 'flex';
+    userDiv.style.display  = 'none';
   }
 }
 
@@ -1546,7 +1593,22 @@ async function gameLogout() {
       }
     } catch {}
   }
+  _refreshTopbarAuth();
 })();
+
+// gameLogout ni yangilaymiz — topbarni ham refresh qilsin
+const _origGameLogout = gameLogout;
+async function gameLogout() {
+  await fetch('/api/auth/logout', { method: 'POST', headers: _authHeaders() }).catch(()=>{});
+  localStorage.removeItem('az_token');
+  localStorage.removeItem('az_user');
+  _gToken = ''; _gUser = null; _gGameId = null; _gState = null;
+  _refreshUserBadge();
+  _refreshTopbarAuth();
+  if (document.getElementById('page-game').classList.contains('active')) {
+    _renderLoginScreen();
+  }
+}
 
 </script>
 </body>
