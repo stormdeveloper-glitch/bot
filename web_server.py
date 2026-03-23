@@ -3,13 +3,117 @@ from datetime import datetime
 import asyncio
 import os
 import json
+import secrets
+import random
 import aiosqlite
 import aiohttp
 from aiohttp import web
 
-from config import DB_PATH, BOT_TOKEN, BOT_USERNAME
+from config import DB_PATH, BOT_TOKEN, BOT_USERNAME, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
 
 WEBAPP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ─── Auth sessions: token -> {id, name, email, picture, created} ──
+_sessions: dict = {}
+
+# ─── Game sessions: game_id -> GameState ─────────────────────────
+_games: dict = {}
+
+
+def _new_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+class GameState:
+    """Anime Karta Jangi — Player vs CPU."""
+
+    STATS = [
+        {"key": "ep_count", "label": "Qismlar soni",   "icon": "🎬"},
+        {"key": "qidiruv",  "label": "Ko'rilgan marta", "icon": "👁"},
+        {"key": "yili",     "label": "Yili",             "icon": "📅"},
+    ]
+
+    def __init__(self, player_cards: list, cpu_cards: list, user: dict):
+        self.player_cards  = player_cards   # list of anime dicts
+        self.cpu_cards     = cpu_cards
+        self.player_score  = 0
+        self.cpu_score     = 0
+        self.round         = 0
+        self.total_rounds  = min(len(player_cards), len(cpu_cards))
+        self.user          = user
+        self.history       = []             # round results
+        self.finished      = False
+        self.winner        = None
+
+    def current_cards(self):
+        if self.round >= self.total_rounds:
+            return None, None
+        return self.player_cards[self.round], self.cpu_cards[self.round]
+
+    def play_round(self, stat_key: str):
+        if self.finished:
+            return None
+        pc, cc = self.current_cards()
+        if pc is None:
+            self.finished = True
+            return None
+
+        pv = int(pc.get(stat_key) or 0)
+        cv = int(cc.get(stat_key) or 0)
+
+        if pv > cv:
+            result = "player"
+            self.player_score += 1
+        elif cv > pv:
+            result = "cpu"
+            self.cpu_score += 1
+        else:
+            result = "draw"
+
+        stat_info = next((s for s in self.STATS if s["key"] == stat_key), {})
+        self.history.append({
+            "round":       self.round + 1,
+            "stat_key":    stat_key,
+            "stat_label":  stat_info.get("label", stat_key),
+            "stat_icon":   stat_info.get("icon", ""),
+            "player_val":  pv,
+            "cpu_val":     cv,
+            "player_card": pc,
+            "cpu_card":    cc,
+            "result":      result,
+        })
+        self.round += 1
+
+        # Check finish
+        need = (self.total_rounds // 2) + 1
+        if self.player_score >= need:
+            self.finished = True
+            self.winner = "player"
+        elif self.cpu_score >= need:
+            self.finished = True
+            self.winner = "cpu"
+        elif self.round >= self.total_rounds:
+            self.finished = True
+            self.winner = "player" if self.player_score > self.cpu_score else (
+                "cpu" if self.cpu_score > self.player_score else "draw"
+            )
+        return self.history[-1]
+
+    def to_dict(self):
+        pc, cc = self.current_cards()
+        return {
+            "round":        self.round,
+            "total_rounds": self.total_rounds,
+            "player_score": self.player_score,
+            "cpu_score":    self.cpu_score,
+            "player_card":  pc,
+            "cpu_card":     cc,
+            "stats":        self.STATS,
+            "history":      self.history,
+            "finished":     self.finished,
+            "winner":       self.winner,
+            "user":         self.user,
+        }
 WEB_PORT = int(os.getenv("WEB_PORT", 8080))
 
 # Cache: file_id -> {"url": ..., "type": "photo"|"video"}
@@ -29,7 +133,6 @@ async def resolve_file_id(file_id: str) -> dict:
                 if data.get("ok"):
                     file_path = data["result"]["file_path"]
                     url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
-                    # Turini file_path dan aniqlaymiz
                     fp_lower = file_path.lower()
                     if any(fp_lower.endswith(ext) for ext in [".mp4", ".mov", ".avi", ".mkv", ".webm"]):
                         media_type = "video"
@@ -39,17 +142,21 @@ async def resolve_file_id(file_id: str) -> dict:
                         media_type = "video"
                     else:
                         media_type = "photo"
-
                     result = {"url": url, "type": media_type}
                     _media_cache[file_id] = result
                     return result
-    except Exception:
-        pass
+                else:
+                    err_desc = data.get("description", "unknown")
+                    too_big = "too big" in err_desc.lower()
+                    print(f"[getFile] XATO — {err_desc} | file_id={file_id[:30]}...")
+                    return {"url": None, "type": "video", "too_big": too_big}
+    except Exception as e:
+        print(f"[getFile] Exception: {e}")
     return {"url": None, "type": "photo"}
 
 
 async def media_proxy(request):
-    """Stream qilish — rasm yoki video."""
+    """Stream qilish — rasm yoki video. Range request qo'llab-quvvatlaydi."""
     file_id = request.match_info["file_id"]
     if file_id.startswith("http"):
         raise web.HTTPFound(file_id)
@@ -59,10 +166,21 @@ async def media_proxy(request):
         raise web.HTTPNotFound()
 
     try:
+        # Range headerini Telegram CDN ga uzatamiz (video seek uchun muhim)
+        req_headers = {}
+        range_header = request.headers.get("Range")
+        if range_header:
+            req_headers["Range"] = range_header
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(info["url"]) as tg_resp:
+            async with session.get(info["url"], headers=req_headers) as tg_resp:
                 content_type = tg_resp.headers.get("Content-Type", "application/octet-stream")
                 content_length = tg_resp.headers.get("Content-Length")
+                content_range = tg_resp.headers.get("Content-Range")
+
+                # 206 Partial Content yoki 200 OK — Telegram javobiga qarab
+                status = tg_resp.status
+
                 headers = {
                     "Content-Type": content_type,
                     "Accept-Ranges": "bytes",
@@ -70,7 +188,10 @@ async def media_proxy(request):
                 }
                 if content_length:
                     headers["Content-Length"] = content_length
-                response = web.StreamResponse(status=200, headers=headers)
+                if content_range:
+                    headers["Content-Range"] = content_range
+
+                response = web.StreamResponse(status=status, headers=headers)
                 await response.prepare(request)
                 async for chunk in tg_resp.content.iter_chunked(65536):
                     await response.write(chunk)
@@ -178,6 +299,30 @@ async def api_episode_preview(request):
     return web.json_response({"video_url": f"/media/{row[0]}"})
 
 
+async def api_episodes(request):
+    """Anime barcha qismlari ro'yxatini qaytaradi."""
+    anime_id = request.match_info["anime_id"]
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT data_id, qism, file_id FROM anime_datas WHERE id=? ORDER BY qism ASC",
+            (anime_id,)
+        ) as c:
+            rows = await c.fetchall()
+    if not rows:
+        return web.json_response({"episodes": [], "total": 0})
+
+    episodes = []
+    for r in rows:
+        info = await resolve_file_id(r[2])
+        episodes.append({
+            "data_id": r[0],
+            "qism": r[1],
+            "video_url": f"/media/{r[2]}" if info.get("url") else None,
+            "too_big": info.get("too_big", False),
+        })
+    return web.json_response({"episodes": episodes, "total": len(episodes)})
+
+
 async def anime_poster(request):
     """Anime posterini qaytaradi — file_id yoki URL."""
     anime_id = request.match_info["anime_id"]
@@ -199,7 +344,9 @@ async def index(request):
     html_path = os.path.join(WEBAPP_DIR, "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
-    # BOT_USERNAME — index.html da qattiq muhrlangan, inject shart emas
+    # Dinamik qiymatlarni inject qilamiz
+    html = html.replace("{{BOT_USERNAME}}", BOT_USERNAME or "")
+    html = html.replace("{{GOOGLE_CLIENT_ID}}", GOOGLE_CLIENT_ID or "")
     return web.Response(text=html, content_type="text/html", charset="utf-8")
 
 
@@ -462,6 +609,230 @@ async def api_payments(request):
     return web.json_response({"payments": payments})
 
 
+async def api_report(request):
+    """Saytdan shikoyat / taklif — super adminga Telegram xabar yuboradi."""
+    try:
+        body = await request.json()
+        msg_type  = body.get("type", "other")
+        name      = (body.get("name") or "").strip()
+        username  = (body.get("username") or "").strip()
+        message   = (body.get("message") or "").strip()
+
+        if not message:
+            return web.json_response({"ok": False, "error": "Xabar bo'sh"}, status=400)
+
+        type_labels = {
+            "bug":        "🐛 Xatolik",
+            "suggestion": "💡 Taklif",
+            "complaint":  "😤 Shikoyat",
+            "other":      "📌 Boshqa",
+        }
+        type_label = type_labels.get(msg_type, "📌 Boshqa")
+
+        text = (
+            f"📩 <b>Yangi murojaat — Sayt</b>\n"
+            f"{'─' * 28}\n"
+            f"<b>Tur:</b> {type_label}\n"
+        )
+        if name:
+            text += f"<b>Ism:</b> {name}\n"
+        if username:
+            text += f"<b>Username:</b> {username}\n"
+        text += f"\n<b>Xabar:</b>\n{message}"
+
+        from config import SUPER_ADMIN_ID
+        tg_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        async with aiohttp.ClientSession() as session:
+            await session.post(tg_url, json={
+                "chat_id":    SUPER_ADMIN_ID,
+                "text":       text,
+                "parse_mode": "HTML",
+            })
+
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+
+
+# ═══════════════════════════════════════════════
+#  GOOGLE OAUTH
+# ═══════════════════════════════════════════════
+
+async def serve_callback(request):
+    """callback.html ni qaytaradi."""
+    path = os.path.join(WEBAPP_DIR, "callback.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+
+
+async def api_auth_google(request):
+    """
+    POST /api/auth/google  { code: "..." }
+    Google authorization code ni token bilan almashtirib,
+    user ma'lumotlarini qaytaradi va session yaratadi.
+    """
+    try:
+        body = await request.json()
+        code = body.get("code", "").strip()
+        if not code:
+            return web.json_response({"ok": False, "error": "code yo'q"}, status=400)
+
+        redirect_uri = GOOGLE_REDIRECT_URI or body.get("redirect_uri", "")
+        if not redirect_uri:
+            return web.json_response({"ok": False, "error": "GOOGLE_REDIRECT_URI sozlanmagan"}, status=500)
+
+        async with aiohttp.ClientSession() as session:
+            # 1. Code → access token
+            async with session.post("https://oauth2.googleapis.com/token", data={
+                "code":          code,
+                "client_id":     GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri":  redirect_uri,
+                "grant_type":    "authorization_code",
+            }) as resp:
+                token_data = await resp.json()
+
+            if "error" in token_data:
+                return web.json_response({"ok": False, "error": token_data.get("error_description", token_data["error"])}, status=400)
+
+            access_token = token_data.get("access_token")
+
+            # 2. Access token → user info
+            async with session.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            ) as resp:
+                user_info = await resp.json()
+
+        # 3. Session yaratish
+        session_token = _new_token()
+        _sessions[session_token] = {
+            "id":      user_info.get("id", ""),
+            "name":    user_info.get("name", "Foydalanuvchi"),
+            "email":   user_info.get("email", ""),
+            "picture": user_info.get("picture", ""),
+            "created": datetime.now().isoformat(),
+        }
+
+        return web.json_response({
+            "ok":    True,
+            "token": session_token,
+            "user":  _sessions[session_token],
+        })
+
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_auth_me(request):
+    """GET /api/auth/me — token orqali user ma'lumotlarini olish."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user = _sessions.get(token)
+    if not user:
+        return web.json_response({"ok": False, "error": "Autentifikatsiya talab etiladi"}, status=401)
+    return web.json_response({"ok": True, "user": user})
+
+
+async def api_auth_logout(request):
+    """POST /api/auth/logout — session o'chirish."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    _sessions.pop(token, None)
+    return web.json_response({"ok": True})
+
+
+# ═══════════════════════════════════════════════
+#  ANIME KARTA JANGI
+# ═══════════════════════════════════════════════
+
+async def _random_anime_cards(n: int = 5) -> list:
+    """DB dan tasodifiy n ta anime kartani oladi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            SELECT a.id, a.nom, a.rams, a.janri, a.yili, a.aniType, a.fandub,
+                   COALESCE(a.qidiruv,0) as qidiruv,
+                   COUNT(d.data_id) as ep_count
+            FROM animelar a
+            LEFT JOIN anime_datas d ON d.id = a.id
+            GROUP BY a.id
+            ORDER BY RANDOM() LIMIT ?
+        """, (n,)) as c:
+            rows = await c.fetchall()
+
+    cards = []
+    for r in rows:
+        rams = r[2] or ""
+        poster = f"/poster/{r[0]}" if rams else ""
+        cards.append({
+            "id":       r[0],
+            "nom":      r[1] or "Nomsiz",
+            "poster":   poster,
+            "janri":    r[3] or "—",
+            "yili":     int(r[4]) if r[4] and str(r[4]).isdigit() else 0,
+            "aniType":  r[5] or "—",
+            "fandub":   r[6] or "—",
+            "qidiruv":  int(r[7]) if r[7] else 0,
+            "ep_count": int(r[8]) if r[8] else 0,
+        })
+    return cards
+
+
+async def api_game_start(request):
+    """POST /api/game/start — yangi o'yin boshlash."""
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    user = _sessions.get(token)
+    if not user:
+        return web.json_response({"ok": False, "error": "Login talab etiladi"}, status=401)
+
+    try:
+        cards = await _random_anime_cards(10)
+        if len(cards) < 6:
+            return web.json_response({"ok": False, "error": "DB da yetarli anime yo'q"}, status=400)
+
+        random.shuffle(cards)
+        n = len(cards) // 2
+        player_cards = cards[:n]
+        cpu_cards    = cards[n:n*2]
+
+        game_id = _new_token()[:16]
+        _games[game_id] = GameState(player_cards, cpu_cards, user)
+
+        return web.json_response({
+            "ok":      True,
+            "game_id": game_id,
+            "state":   _games[game_id].to_dict(),
+        })
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_game_state(request):
+    """GET /api/game/{game_id} — o'yin holatini olish."""
+    game_id = request.match_info["game_id"]
+    game = _games.get(game_id)
+    if not game:
+        return web.json_response({"ok": False, "error": "O'yin topilmadi"}, status=404)
+    return web.json_response({"ok": True, "state": game.to_dict()})
+
+
+async def api_game_move(request):
+    """POST /api/game/{game_id}/move  { stat: "ep_count"|"qidiruv"|"yili" }"""
+    game_id = request.match_info["game_id"]
+    game = _games.get(game_id)
+    if not game:
+        return web.json_response({"ok": False, "error": "O'yin topilmadi"}, status=404)
+    if game.finished:
+        return web.json_response({"ok": False, "error": "O'yin tugagan"}, status=400)
+
+    body = await request.json()
+    stat = body.get("stat", "")
+    valid = [s["key"] for s in GameState.STATS]
+    if stat not in valid:
+        return web.json_response({"ok": False, "error": f"Noto'g'ri stat. Mumkin: {valid}"}, status=400)
+
+    result = game.play_round(stat)
+    return web.json_response({"ok": True, "round_result": result, "state": game.to_dict()})
+
+
 def create_app():
     app = web.Application(client_max_size=1024**3)
     app.router.add_get("/", index)
@@ -473,8 +844,19 @@ def create_app():
     app.router.add_get("/api/payments", api_payments)
     app.router.add_get("/api/media/{anime_id}", anime_media_info)
     app.router.add_get("/api/preview/{anime_id}", api_episode_preview)
+    app.router.add_get("/api/episodes/{anime_id}", api_episodes)
     app.router.add_get("/media/{file_id}", media_proxy)
     app.router.add_post("/api/ai/chat", api_ai_chat)
+    app.router.add_post("/api/report",  api_report)
+    # OAuth
+    app.router.add_get( "/callback",         serve_callback)
+    app.router.add_post("/api/auth/google",  api_auth_google)
+    app.router.add_get( "/api/auth/me",      api_auth_me)
+    app.router.add_post("/api/auth/logout",  api_auth_logout)
+    # Game
+    app.router.add_post("/api/game/start",          api_game_start)
+    app.router.add_get( "/api/game/{game_id}",       api_game_state)
+    app.router.add_post("/api/game/{game_id}/move",  api_game_move)
     return app
 
 
