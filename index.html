@@ -608,6 +608,21 @@ html{scroll-behavior:smooth}
 
 .g-loading{text-align:center;padding:60px 20px;color:var(--muted);font-size:.9rem}
 
+
+/* ── ANIME TAXMINLASH ─────────────────────────── */
+.guess-opts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.guess-opt{
+  padding:12px 10px;border-radius:10px;
+  border:1px solid var(--border);background:var(--card-bg);
+  color:var(--text);font-size:.82rem;font-weight:600;
+  cursor:pointer;transition:all .18s;text-align:center;line-height:1.3
+}
+.guess-opt:hover:not(.disabled):not(.correct):not(.wrong){
+  border-color:var(--accent);background:rgba(0,212,255,.08);color:var(--accent)
+}
+.guess-opt.correct{background:rgba(52,211,153,.15);border-color:#34d399;color:#34d399}
+.guess-opt.wrong{background:rgba(239,68,68,.12);border-color:#ef4444;color:#ef4444}
+.guess-opt.disabled{opacity:.45;cursor:default}
 </style>
 </head>
 <body>
@@ -657,7 +672,7 @@ html{scroll-behavior:smooth}
   </nav>
 
   <div class="sidebar-footer">
-    <button class="snav" onclick="toggleAi()">
+    <button class="snav" onclick="toggleAi()" style="display:none">
       <span class="snav-ico">🤖</span>
       <span class="snav-txt">AI Yordamchi</span>
     </button>
@@ -674,7 +689,7 @@ html{scroll-behavior:smooth}
     <div class="topbar-right">
       <button class="tbtn" onclick="showPage('report',null)" title="Shikoyat / Taklif">📩</button>
       <button class="tbtn" onclick="showPage('settings',null)" title="Sozlamalar">⚙️</button>
-      <button class="tbtn" onclick="toggleAi()" title="AI">🤖</button>
+      <button class="tbtn" onclick="toggleAi()" title="AI" style="display:none">🤖</button>
       <!-- Google Login/User badge -->
       <div id="topbar-auth">
         <button id="topbar-login-btn" class="tbtn" onclick="topbarLogin()" title="Google bilan kirish" style="display:none;align-items:center;gap:5px;font-size:.7rem;padding:5px 10px;border-radius:20px;background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.3);color:var(--accent);font-weight:600;white-space:nowrap">
@@ -906,7 +921,7 @@ html{scroll-behavior:smooth}
 </nav>
 
 <!-- AI CHAT -->
-<div id="aiToggle" onclick="toggleAi()">🤖</div>
+<div id="aiToggle" onclick="toggleAi()" style="display:none">🤖</div>
 <div id="aiBox">
   <div class="ai-hd"><h3>✦ AI Yordamchi</h3><div class="ai-cl" onclick="toggleAi()">✕</div></div>
   <div id="chatMsgs"><div class="msg ai">Salom! Animelar haqida savol bering 👋</div></div>
@@ -1020,7 +1035,7 @@ function showPage(name, btn){
   const ts=document.getElementById('topSub');   if(ts) ts.textContent=PS[name]||'';
   if(name==='admins')   renderAdmins();
   if(name==='stats')    renderStats();
-  if(name==='game')     initGame();
+  if(name==='game')     switchGameTab(_activeGameTab || 'card');
   if(name==='settings') syncSettingsUI();
 }
 
@@ -1309,6 +1324,7 @@ function _authHeaders() {
 
 function initGame() {
   _refreshUserBadge();
+  _refreshTopbarAuth && _refreshTopbarAuth();
   if (_gUser && _gToken) {
     _renderGameReady();
   } else {
@@ -1529,6 +1545,248 @@ function nextRound() {
   _gWaiting = false;
   _gState.history = _gState.history; // keep history
   _renderBoard();
+}
+
+
+// ═══════════════════════════════════════════════════════
+//  GAME TAB SWITCHER
+// ═══════════════════════════════════════════════════════
+let _activeGameTab = 'card';
+
+function switchGameTab(tab) {
+  _activeGameTab = tab;
+  const cardRoot  = document.getElementById('game-root');
+  const guessRoot = document.getElementById('guess-root');
+  const tabCard   = document.getElementById('gtab-card');
+  const tabGuess  = document.getElementById('gtab-guess');
+
+  if (tab === 'card') {
+    cardRoot.style.display  = '';
+    guessRoot.style.display = 'none';
+    tabCard.style.background  = 'var(--accent)';
+    tabCard.style.color       = '#000';
+    tabCard.style.borderColor = 'var(--accent)';
+    tabGuess.style.background = 'var(--card-bg)';
+    tabGuess.style.color      = 'var(--muted)';
+    tabGuess.style.borderColor= 'var(--border)';
+    initGame();
+  } else {
+    cardRoot.style.display  = 'none';
+    guessRoot.style.display = '';
+    tabGuess.style.background  = 'var(--accent)';
+    tabGuess.style.color       = '#000';
+    tabGuess.style.borderColor = 'var(--accent)';
+    tabCard.style.background   = 'var(--card-bg)';
+    tabCard.style.color        = 'var(--muted)';
+    tabCard.style.borderColor  = 'var(--border)';
+    initGuessGame();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  ANIME TAXMINLASH O'YINI
+// ═══════════════════════════════════════════════════════
+let _guessState = null; // { animes, current, score, total, answered, options, finished }
+
+async function initGuessGame() {
+  const root = document.getElementById('guess-root');
+  if (!root) return;
+  if (!_gUser || !_gToken) {
+    _renderGuessLogin(root);
+    return;
+  }
+  if (_guessState && !_guessState.finished) {
+    _renderGuessBoard(root);
+  } else {
+    _renderGuessMenu(root);
+  }
+}
+
+function _renderGuessLogin(root) {
+  const url = _getGoogleAuthUrl();
+  root.innerHTML = `
+    <div class="g-login-wrap">
+      <div class="g-login-ico">🎯</div>
+      <div class="g-login-title">Anime Taxminlash</div>
+      <div class="g-login-desc">
+        Animening rasmini ko'rib, nomini toping!<br>
+        6 ta savol — to'g'ri javoblar uchun ball yig'ing.
+      </div>
+      <button class="g-google-btn" onclick="window.location.href='${url}'">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.78l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Google bilan kirish
+      </button>
+    </div>`;
+}
+
+function _renderGuessMenu(root) {
+  root.innerHTML = `
+    <div class="g-over" style="padding:40px 20px">
+      <div class="g-over-ico">🎯</div>
+      <div class="g-over-title">Anime Taxminlash</div>
+      <div class="g-over-score">
+        Salom, <b>${_gUser.name}</b>!<br>
+        <span style="font-size:.85rem;color:var(--muted)">6 ta animeni rasmidan toping • 4 ta variantdan birini tanlang</span>
+      </div>
+      <button class="g-play-again" onclick="startGuessGame()">▶ O'yinni Boshlash</button>
+    </div>`;
+}
+
+async function startGuessGame() {
+  const root = document.getElementById('guess-root');
+  root.innerHTML = '<div class="g-loading"><div class="spinner" style="margin:0 auto 12px"></div>Savollar tayyorlanmoqda...</div>';
+
+  try {
+    // API dan animelar olish
+    const res = await fetch('/api/animes');
+    const data = await res.json();
+    let animes = data.animes || [];
+
+    // Kamida 12 ta bo'lsin (6 savol + 4 variant uchun)
+    if (animes.length < 8) {
+      root.innerHTML = '<div class="g-loading">❌ DB da yetarli anime yo'q (kamida 8 ta kerak)</div>';
+      return;
+    }
+
+    // Shuffle
+    animes = animes.sort(() => Math.random() - 0.5);
+    const selected = animes.slice(0, 6); // 6 ta savol
+    const otherPool = animes.slice(6);   // qolganlar variant uchun
+
+    // Har bir savol uchun 4 ta variant tayyorlash
+    const questions = selected.map(correct => {
+      // 3 ta noto'g'ri variant
+      const wrong = otherPool
+        .filter(a => a.id !== correct.id)
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 3)
+        .map(a => a.nom);
+      const options = [correct.nom, ...wrong].sort(() => Math.random() - 0.5);
+      return { anime: correct, options, correct: correct.nom };
+    });
+
+    _guessState = {
+      questions,
+      current: 0,
+      score: 0,
+      total: 6,
+      answered: null, // null | 'correct' | 'wrong'
+      chosenOption: null,
+      finished: false,
+    };
+
+    _renderGuessBoard(root);
+  } catch(e) {
+    root.innerHTML = `<div class="g-loading">❌ Xatolik: ${e.message}</div>`;
+  }
+}
+
+function _renderGuessBoard(root) {
+  if (!_guessState) return;
+  const st = _guessState;
+
+  if (st.finished) {
+    _renderGuessOver(root);
+    return;
+  }
+
+  const q = st.questions[st.current];
+  const anime = q.anime;
+  const imgUrl = anime.rams_url || '';
+
+  // Progress bar
+  const progress = Math.round((st.current / st.total) * 100);
+
+  // Options HTML
+  const optionsHtml = q.options.map(opt => {
+    let cls = 'guess-opt';
+    let icon = '';
+    if (st.answered !== null) {
+      if (opt === q.correct) { cls += ' correct'; icon = ' ✅'; }
+      else if (opt === st.chosenOption && opt !== q.correct) { cls += ' wrong'; icon = ' ❌'; }
+      else { cls += ' disabled'; }
+    }
+    const click = st.answered === null ? `onclick="guessAnswer('${opt.replace(/'/g,"\'")}', this)"` : '';
+    return `<button class="${cls}" ${click}>${opt}${icon}</button>`;
+  }).join('');
+
+  // Next button (faqat javob berilgandan keyin)
+  const nextBtn = st.answered !== null
+    ? `<button class="g-next-btn" style="margin-top:14px;width:100%" onclick="guessNext()">
+        ${st.current + 1 >= st.total ? '🏁 Natijani Ko'rish' : 'Keyingi Savol ➡'}
+       </button>`
+    : '';
+
+  root.innerHTML = `
+    <div style="max-width:480px;margin:0 auto">
+      <!-- Progress -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:.78rem;color:var(--muted)">Savol ${st.current + 1} / ${st.total}</span>
+        <span style="font-size:.78rem;font-weight:700;color:var(--accent)">🏆 ${st.score} ball</span>
+      </div>
+      <div style="height:5px;background:var(--border);border-radius:4px;margin-bottom:16px;overflow:hidden">
+        <div style="height:100%;width:${progress}%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
+      </div>
+
+      <!-- Rasm -->
+      <div style="position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:16px;background:var(--card-bg)">
+        <img src="${imgUrl}"
+          style="width:100%;height:auto;max-height:320px;object-fit:contain;display:block;background:var(--border2)"
+          onerror="this.src='';this.outerHTML='<div style=height:200px;display:flex;align-items:center;justify-content:center;font-size:3rem;background:var(--border2)>🎬</div>'">
+        <div style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.7);padding:3px 10px;border-radius:20px;font-size:.72rem;color:#fff;font-weight:600">Bu anime nima? 🤔</div>
+      </div>
+
+      <!-- Variantlar -->
+      <div class="guess-opts-grid">
+        ${optionsHtml}
+      </div>
+
+      ${nextBtn}
+    </div>`;
+}
+
+function guessAnswer(chosen, btnEl) {
+  if (!_guessState || _guessState.answered !== null) return;
+  const q = _guessState.questions[_guessState.current];
+  _guessState.chosenOption = chosen;
+  if (chosen === q.correct) {
+    _guessState.answered = 'correct';
+    _guessState.score++;
+  } else {
+    _guessState.answered = 'wrong';
+  }
+  _renderGuessBoard(document.getElementById('guess-root'));
+}
+
+function guessNext() {
+  if (!_guessState) return;
+  _guessState.current++;
+  _guessState.answered = null;
+  _guessState.chosenOption = null;
+  if (_guessState.current >= _guessState.total) {
+    _guessState.finished = true;
+  }
+  _renderGuessBoard(document.getElementById('guess-root'));
+}
+
+function _renderGuessOver(root) {
+  const st = _guessState;
+  const pct = Math.round((st.score / st.total) * 100);
+  let ico, title, sub;
+  if (pct >= 80)      { ico='🏆'; title="Zo'r natija!";    sub='Siz haqiqiy anime bilimdonisiz!'; }
+  else if (pct >= 50) { ico='😊'; title="Yaxshi urinish!"; sub='Yana bir oz mashq kerak.'; }
+  else                { ico='😅'; title="Qiyin ekan...";   sub='Ko'proq anime ko'ring va qayta urining!'; }
+
+  root.innerHTML = `
+    <div class="g-over">
+      <div class="g-over-ico">${ico}</div>
+      <div class="g-over-title">${title}</div>
+      <div class="g-over-score">
+        ${sub}<br>
+        <b>${st.score}</b> / <b>${st.total}</b> to'g'ri • <b>${pct}%</b>
+      </div>
+      <button class="g-play-again" onclick="startGuessGame()">🔁 Qayta O'ynash</button>
+    </div>`;
 }
 
 // ── TOPBAR AUTH ──────────────────────────────────────────────────
