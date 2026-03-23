@@ -818,17 +818,25 @@ html{scroll-behavior:smooth}
     </div>
 
 
-    <!-- 🃏 KARTA JANGI -->
+    <!-- 🎮 O'YINLAR -->
     <div class="page" id="page-game">
       <div class="page-hd">
-        <div><div class="page-title">🃏 Anime Karta Jangi</div><div class="page-sub">Google bilan kiring va o'ynang</div></div>
+        <div><div class="page-title">🎮 O'yinlar</div><div class="page-sub">Google bilan kiring va o'ynang</div></div>
         <div id="game-user-badge" style="display:none;align-items:center;gap:10px;background:var(--card-bg);border:1px solid var(--border);border-radius:40px;padding:6px 14px 6px 8px">
           <img id="game-avatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover" src="" alt="">
           <span id="game-uname" style="font-size:.84rem;font-weight:600;color:var(--text)"></span>
           <button onclick="gameLogout()" style="font-size:.7rem;color:var(--muted);background:none;border:none;cursor:pointer;padding-left:4px">✕</button>
         </div>
       </div>
+      <!-- Tab tugmalar -->
+      <div style="display:flex;gap:8px;padding:0 0 14px 0;border-bottom:1px solid var(--border);margin-bottom:16px">
+        <button id="gtab-card" onclick="switchGameTab('card')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:#000;font-weight:700;font-size:.8rem;cursor:pointer;transition:all .2s">🃏 Karta Jangi</button>
+        <button id="gtab-guess" onclick="switchGameTab('guess')" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);color:var(--muted);font-weight:600;font-size:.8rem;cursor:pointer;transition:all .2s">🎯 Anime Taxminlash</button>
+      </div>
+      <!-- Karta jangi -->
       <div id="game-root"></div>
+      <!-- Anime taxminlash -->
+      <div id="guess-root" style="display:none"></div>
     </div>
 
     <!-- ⚙️ SOZLAMALAR -->
