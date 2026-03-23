@@ -887,8 +887,8 @@ html{scroll-behavior:smooth}
   <div class="bnav-inner">
     <button class="bnav-item active" onclick="showPage('animes',this)"><span class="bn-ico">🎬</span><span class="bn-lbl">Anime</span></button>
     <button class="bnav-item" onclick="showPage('admins',this)"><span class="bn-ico">👑</span><span class="bn-lbl">Admin</span></button>
+    <button class="bnav-item" onclick="showPage('game',this)"><span class="bn-ico">🃏</span><span class="bn-lbl">O'yin</span></button>
     <button class="bnav-item" onclick="showPage('stats',this)"><span class="bn-ico">📊</span><span class="bn-lbl">Stat</span></button>
-    <button class="bnav-item" onclick="showPage('report',this)"><span class="bn-ico">📩</span><span class="bn-lbl">Murojaat</span></button>
     <button class="bnav-item" onclick="showPage('settings',this)"><span class="bn-ico">⚙️</span><span class="bn-lbl">Sozlama</span></button>
   </div>
 </nav>
@@ -1006,8 +1006,10 @@ function showPage(name, btn){
   document.querySelectorAll(`[onclick*="'${name}'"]`).forEach(b=>b.classList.add('active'));
   const tt=document.getElementById('topTitle'); if(tt) tt.textContent=PT[name]||name;
   const ts=document.getElementById('topSub');   if(ts) ts.textContent=PS[name]||'';
-  if(name==='admins') renderAdmins();
-  if(name==='stats')  renderStats();
+  if(name==='admins')   renderAdmins();
+  if(name==='stats')    renderStats();
+  if(name==='game')     initGame();
+  if(name==='settings') syncSettingsUI();
 }
 
 // ── ANIMES ───────────────────────────────────────────────────────
