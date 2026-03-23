@@ -1023,7 +1023,7 @@ async function loadAnimes(){
     allAnimes=d.animes||[];
   }catch{
     allAnimes=[];
-    document.getElementById('animeGrid').innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">⚠️</div><h3>Serverga ulanib bo'lmadi</h3></div>';
+    document.getElementById('animeGrid').innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">⚠️</div><h3>Serverga ulanib bo’lmadi</h3></div>';
     return;
   }
   const tcEl=document.getElementById('sideCount'); if(tcEl) tcEl.textContent=allAnimes.length;
@@ -1154,7 +1154,7 @@ async function renderAdmins(){
     if(res.ok){const d=await res.json();admins=d.admins||[];}
     else throw new Error();
   }catch{
-    g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">⚠️</div><h3>Serverga ulanib bo'lmadi</h3></div>';
+    g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-ico">⚠️</div><h3>Serverga ulanib bo’lmadi</h3></div>';
     return;
   }
   if(!admins.length){
@@ -1403,7 +1403,7 @@ function _renderBoard() {
 
       ${lastRound && _gWaiting ? _roundResultHtml(lastRound) : ''}
 
-      ${!_gWaiting ? '<div class="g-choose-prompt">⬇ Statistika tanlang — yuqori son g'alaba!</div>' : ''}
+      ${!_gWaiting ? '<div class="g-choose-prompt">⬇ Statistika tanlang — yuqori son g’alaba!</div>' : ''}
 
       <!-- Cards -->
       <div class="g-cards-row">
@@ -1486,7 +1486,7 @@ function _renderGameOver() {
   } else if (st.winner === 'cpu') {
     ico='💀';title='Yutqazdingiz!';sub='CPU sizni yendi. Qayta urining!';
   } else {
-    ico='🤝';title='Durrang!';sub='Teng natija. Qayta o'ynang!';
+    ico='🤝';title='Durrang!';sub="Teng natija. Qayta o'ynang!";
   }
   root.innerHTML = `
     <div class="g-over">
