@@ -1644,7 +1644,7 @@ async function startGuessGame() {
 
     // Kamida 12 ta bo'lsin (6 savol + 4 variant uchun)
     if (animes.length < 8) {
-      root.innerHTML = '<div class="g-loading">❌ DB da yetarli anime yo'q (kamida 8 ta kerak)</div>';
+      root.innerHTML = '<div class="g-loading">&#10060; DB da yetarli anime yo\'q (kamida 8 ta kerak)</div>';
       return;
     }
 
@@ -1693,12 +1693,12 @@ function _renderGuessBoard(root) {
   const q = st.questions[st.current];
   const anime = q.anime;
   const imgUrl = anime.rams_url || '';
-
-  // Progress bar
   const progress = Math.round((st.current / st.total) * 100);
 
-  // Options HTML
-  const optionsHtml = q.options.map(opt => {
+  // Build options
+  let optionsHtml = '';
+  for (let i = 0; i < q.options.length; i++) {
+    const opt = q.options[i];
     let cls = 'guess-opt';
     let icon = '';
     if (st.answered !== null) {
@@ -1706,48 +1706,42 @@ function _renderGuessBoard(root) {
       else if (opt === st.chosenOption && opt !== q.correct) { cls += ' wrong'; icon = ' ❌'; }
       else { cls += ' disabled'; }
     }
-    const click = st.answered === null ? `onclick="guessAnswer('${opt.replace(/'/g,"\'")}', this)"` : '';
-    return `<button class="${cls}" ${click}>${opt}${icon}</button>`;
-  }).join('');
+    const safeOpt = opt.replace(/\\/g, '\\\\').replace(/"/g, '&quot;');
+    const clickAttr = st.answered === null ? 'onclick="guessAnswer(' + i + ')"' : '';
+    optionsHtml += '<button class="' + cls + '" ' + clickAttr + '>' + opt + icon + '</button>';
+  }
 
-  // Next button (faqat javob berilgandan keyin)
-  const nextBtn = st.answered !== null
-    ? `<button class="g-next-btn" style="margin-top:14px;width:100%" onclick="guessNext()">
-        ${st.current + 1 >= st.total ? '🏁 Natijani Ko'rish' : 'Keyingi Savol ➡'}
-       </button>`
-    : '';
+  // Next button
+  let nextBtn = '';
+  if (st.answered !== null) {
+    const btnLabel = (st.current + 1 >= st.total) ? '&#127937; Natijani Ko\'rish' : 'Keyingi Savol &#10145;';
+    nextBtn = '<button class="g-next-btn" style="margin-top:14px;width:100%" onclick="guessNext()">' + btnLabel + '</button>';
+  }
 
-  root.innerHTML = `
-    <div style="max-width:480px;margin:0 auto">
-      <!-- Progress -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="font-size:.78rem;color:var(--muted)">Savol ${st.current + 1} / ${st.total}</span>
-        <span style="font-size:.78rem;font-weight:700;color:var(--accent)">🏆 ${st.score} ball</span>
-      </div>
-      <div style="height:5px;background:var(--border);border-radius:4px;margin-bottom:16px;overflow:hidden">
-        <div style="height:100%;width:${progress}%;background:var(--accent);border-radius:4px;transition:width .4s"></div>
-      </div>
-
-      <!-- Rasm -->
-      <div style="position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:16px;background:var(--card-bg)">
-        <img src="${imgUrl}"
-          style="width:100%;height:auto;max-height:320px;object-fit:contain;display:block;background:var(--border2)"
-          onerror="this.src='';this.outerHTML='<div style=height:200px;display:flex;align-items:center;justify-content:center;font-size:3rem;background:var(--border2)>🎬</div>'">
-        <div style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.7);padding:3px 10px;border-radius:20px;font-size:.72rem;color:#fff;font-weight:600">Bu anime nima? 🤔</div>
-      </div>
-
-      <!-- Variantlar -->
-      <div class="guess-opts-grid">
-        ${optionsHtml}
-      </div>
-
-      ${nextBtn}
-    </div>`;
+  root.innerHTML =
+    '<div style="max-width:480px;margin:0 auto">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+        '<span style="font-size:.78rem;color:var(--muted)">Savol ' + (st.current + 1) + ' / ' + st.total + '</span>' +
+        '<span style="font-size:.78rem;font-weight:700;color:var(--accent)">&#127942; ' + st.score + ' ball</span>' +
+      '</div>' +
+      '<div style="height:5px;background:var(--border);border-radius:4px;margin-bottom:16px;overflow:hidden">' +
+        '<div style="height:100%;width:' + progress + '%;background:var(--accent);border-radius:4px;transition:width .4s"></div>' +
+      '</div>' +
+      '<div style="position:relative;width:100%;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:16px;background:var(--card-bg)">' +
+        '<img src="' + imgUrl + '" style="width:100%;height:auto;max-height:320px;object-fit:contain;display:block;background:var(--border2)" ' +
+          'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+        '<div style="display:none;height:200px;align-items:center;justify-content:center;font-size:3rem;background:var(--border2)">&#127902;</div>' +
+        '<div style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.7);padding:3px 10px;border-radius:20px;font-size:.72rem;color:#fff;font-weight:600">Bu anime nima? &#129300;</div>' +
+      '</div>' +
+      '<div class="guess-opts-grid">' + optionsHtml + '</div>' +
+      nextBtn +
+    '</div>';
 }
 
-function guessAnswer(chosen, btnEl) {
+function guessAnswer(optIdx) {
   if (!_guessState || _guessState.answered !== null) return;
   const q = _guessState.questions[_guessState.current];
+  const chosen = q.options[optIdx];
   _guessState.chosenOption = chosen;
   if (chosen === q.correct) {
     _guessState.answered = 'correct';
@@ -1773,9 +1767,9 @@ function _renderGuessOver(root) {
   const st = _guessState;
   const pct = Math.round((st.score / st.total) * 100);
   let ico, title, sub;
-  if (pct >= 80)      { ico='🏆'; title="Zo'r natija!";    sub='Siz haqiqiy anime bilimdonisiz!'; }
-  else if (pct >= 50) { ico='😊'; title="Yaxshi urinish!"; sub='Yana bir oz mashq kerak.'; }
-  else                { ico='😅'; title="Qiyin ekan...";   sub='Ko'proq anime ko'ring va qayta urining!'; }
+  if (pct >= 80)      { ico="🏆"; title="Zo'r natija!";    sub="Siz haqiqiy anime bilimdonisiz!"; }
+  else if (pct >= 50) { ico="😊"; title="Yaxshi urinish!"; sub="Yana bir oz mashq kerak."; }
+  else                { ico="😅"; title="Qiyin ekan...";   sub="Ko'proq anime ko'ring va qayta urining!"; }
 
   root.innerHTML = `
     <div class="g-over">
