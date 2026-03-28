@@ -3,3 +3,4 @@ requests==2.31.0
 yt-dlp
 beautifulsoup4==4.12.3
 lxml==5.2.1
+python-dotenv
