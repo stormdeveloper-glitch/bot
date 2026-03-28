@@ -1613,7 +1613,7 @@ async def ai_handler(message: Message):
                 if row and row[0]:
                     rams = row[0]
                     from keyboards import InlineKeyboardMarkup, InlineKeyboardButton
-                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎬 KO'RISH", callback_query_data=f"info_{anime_id}")]])
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎬 KO'RISH", callback_data=f"loadAnime={anime_id}")]])
                     
                     try:
                         await message.answer_photo(photo=rams, caption=f"<b>{name}</b>\n\n{reply_text}", reply_markup=kb, parse_mode="HTML")
@@ -1624,3 +1624,123 @@ async def ai_handler(message: Message):
         await message.answer(reply)
     except Exception as e:
         await wait_msg.edit_text(f"❌ AI bilan bog'lanishda xatolik: {e}")
+
+
+# ─── AI Tool Router (umumiy xabarlar uchun) ───────────────────────────────────
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def ai_tool_router(message: Message, state: FSMContext, bot: Bot):
+    """
+    Har qanday matnli xabar uchun:
+    1. Avval tez mantiq (smart_router)
+    2. Keyin AI fallback
+    3. Topilgan tool ni ishga tushuradi
+    """
+    # Agar biror state'da bo'lsa — bu handler ishlamasin
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+
+    user_id = message.from_user.id
+
+    if not await is_admin(user_id) and await is_maintenance():
+        await message.answer(MAINTENANCE_MSG, parse_mode="HTML")
+        return
+
+    if not await check_subscription(user_id, bot):
+        keyboard = await get_subscription_keyboard(user_id, bot)
+        await message.answer(
+            "<b>Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling❗️</b>",
+            reply_markup=keyboard, parse_mode="HTML"
+        )
+        return
+
+    text = message.text.strip()
+
+    # Raqam bo'lsa — anime ID sifatida ko'rsin (yuqoridagi handler ushlaydi)
+    if text.isdigit():
+        return
+
+    # ⚡ 1. Tez mantiq
+    from utils.smart_router import detect_tool_fast
+    tool = detect_tool_fast(text)
+
+    # 🤖 2. AI fallback (agar tez mantiq aniq javob bermasa)
+    FAST_TOOLS = {"downloader", "checker", "stats"}
+    if tool not in FAST_TOOLS:
+        try:
+            from utils.ai_router import detect_tool_ai
+            ai_tool = detect_tool_ai(text)
+            if ai_tool:
+                tool = ai_tool
+        except Exception:
+            pass
+
+    # 🔧 3. Toollni ishga tushirish
+    from utils.tools import pinterest, downloader, checker, stats, anime as anime_tool
+
+    TOOLS = {
+        "pinterest": pinterest.handle,
+        "downloader": downloader.handle,
+        "checker": checker.handle,
+        "stats": stats.handle,
+        "anime": anime_tool.handle,
+    }
+
+    handler = TOOLS.get(tool)
+    if handler:
+        try:
+            await handler(message)
+        except Exception as e:
+            await message.answer("❌ Xatolik yuz berdi, qayta urinib ko'r")
+    else:
+        # Tool aniqlanmadi — anime qidiruv sifatida ko'rish
+        await message.answer(
+            f"🔍 <b>{text}</b> bo'yicha qidirilmoqda...",
+            parse_mode="HTML"
+        )
+        # removed self-import
+        # Qidiruv holatini simulyatsiya qilmasdan to'g'ridan qidirish
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                "SELECT * FROM animelar WHERE nom LIKE ? LIMIT 5", (f"%{text}%",)
+            ) as cursor:
+                results = await cursor.fetchall()
+
+        if results:
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            buttons = [
+                [InlineKeyboardButton(text=f"🎬 {a[1]}", callback_data=f"loadAnime={a[0]}")]
+                for a in results
+            ]
+            await message.answer(
+                "⬇️ <b>Topildi:</b>",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("❌ Hech narsa topilmadi")
+
+
+@router.message(Command("pinterest"))
+async def pinterest_command(message: Message):
+    """
+    /pinterest [so'rov] — Pinterest dan rasm qidiradi
+    Misol: /pinterest naruto
+    """
+    query = message.text.replace("/pinterest", "").strip()
+
+    if not query:
+        await message.answer(
+            "🖼 <b>Pinterest qidiruv</b>\n\n"
+            "Qidiruv so'rovini yozing:\n"
+            "<code>/pinterest naruto</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    from utils.tools.pinterest import handle as pinterest_handle
+
+    # message.text ni query bilan almashtirish uchun mock
+    message.text = query
+    await pinterest_handle(message)
