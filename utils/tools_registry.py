@@ -1,4 +1,11 @@
-from utils.tools import{pinterest, downloader, checker, stats, anime, admin}
+from utils.tools import (
+    pinterest,
+    downloader,
+    checker,
+    stats,
+    anime,
+    admin
+)
 
 TOOLS = {
     "pinterest": pinterest.handle,
