@@ -1,13 +1,13 @@
 from aiogram import types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from config import SUPER_ADMIN_ID, ADMIN_IDS, DATA_DIR
+from config import SUPER_ADMIN_ID, DATA_DIR
 import json, os
 
-BASE = "bot_data"
-ANIME_DB = os.path.join(BASE, "anime.json")
-ADMINS_JSON_PATH = os.path.join(DATA_DIR, "admins.json")
+# Har ikki joy ham bir xil DB ishlatsin
+ANIME_DB = os.path.join(DATA_DIR, "anime.json")
 
-os.makedirs(BASE, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
+
 
 def load_db():
     if not os.path.exists(ANIME_DB):
@@ -16,26 +16,33 @@ def load_db():
     with open(ANIME_DB) as f:
         return json.load(f)
 
+
 def save_db(data):
     with open(ANIME_DB, "w") as f:
         json.dump(data, f, indent=2)
 
 
-# ===== KEYBOARD =====
+# ===== KEYBOARD (aiogram v3 uslubi) =====
 def admin_menu():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🎬 Anime"))
-    kb.add(KeyboardButton("📊 Stats"))
-    kb.add(KeyboardButton("⬅️ Exit"))
-    return kb
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🎬 Anime")],
+            [KeyboardButton(text="📊 Stats")],
+            [KeyboardButton(text="⬅️ Exit")]
+        ],
+        resize_keyboard=True
+    )
 
 
 def anime_menu():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("➕ Add Anime", "➕ Add Episode")
-    kb.add("❌ Delete Anime", "📋 List Anime")
-    kb.add("⬅️ Back")
-    return kb
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Add Anime"), KeyboardButton(text="➕ Add Episode")],
+            [KeyboardButton(text="❌ Delete Anime"), KeyboardButton(text="📋 List Anime")],
+            [KeyboardButton(text="⬅️ Back")]
+        ],
+        resize_keyboard=True
+    )
 
 
 # ===== STATE =====
@@ -66,7 +73,7 @@ def add_episode(title, file_id):
 # ===== HANDLER =====
 async def handle(message: types.Message):
     if message.from_user.id != SUPER_ADMIN_ID:
-        return await message.answer("❌ Ruxsat yo‘q")
+        return await message.answer("❌ Ruxsat yo'q")
 
     chat_id = message.chat.id
     text = message.text
@@ -85,12 +92,12 @@ async def handle(message: types.Message):
 
     if admin_states.get(chat_id) == "add_anime":
         try:
-            title, desc = text.split("|")
-            add_anime(title, desc)
+            title, desc = text.split("|", 1)
+            add_anime(title.strip(), desc.strip())
             admin_states.pop(chat_id)
-            return await message.answer("✅ Qo‘shildi")
+            return await message.answer("✅ Qo'shildi")
         except:
-            return await message.answer("❌ Format xato")
+            return await message.answer("❌ Format xato. Masalan: Naruto|Ninja haqida anime")
 
     # ADD EPISODE
     if text == "➕ Add Episode":
@@ -111,12 +118,12 @@ async def handle(message: types.Message):
             ok = add_episode(st["title"], message.video.file_id)
             admin_states.pop(chat_id)
 
-            return await message.answer("✅ Qo‘shildi" if ok else "❌ Anime topilmadi")
+            return await message.answer("✅ Qo'shildi" if ok else "❌ Anime topilmadi")
 
     # LIST
     if text == "📋 List Anime":
         data = load_db()
-        return await message.answer("\n".join(a["title"] for a in data) or "Bo‘sh")
+        return await message.answer("\n".join(a["title"] for a in data) or "Bo'sh")
 
     # DELETE
     if text == "❌ Delete Anime":
@@ -128,8 +135,8 @@ async def handle(message: types.Message):
         data = [a for a in data if a["title"].lower() != text.lower()]
         save_db(data)
         admin_states.pop(chat_id)
-        return await message.answer("🗑 O‘chirildi")
+        return await message.answer("🗑 O'chirildi")
 
-    if text == "⬅️ Exit":
+    if text in ["⬅️ Exit", "⬅️ Back"]:
         admin_states.pop(chat_id, None)
         return await message.answer("Chiqildi")

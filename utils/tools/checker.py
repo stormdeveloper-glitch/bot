@@ -1,5 +1,5 @@
 import requests
-
+from aiogram import types
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
@@ -18,7 +18,6 @@ def check_username(username):
         res = requests.get(url, headers=HEADERS, timeout=5)
 
         if res.status_code == 200:
-            # sahifa bor → band
             if "tgme_page_title" in res.text:
                 return "taken"
         return "free"
@@ -27,39 +26,22 @@ def check_username(username):
         return "error"
 
 
-def handle(bot, data):
-    # 🤖 BOT MODE
-    if bot:
-        chat_id = data.chat.id
-        text = data.text.strip()
+async def handle(message: types.Message):
+    text = message.text.strip()
 
-        if not text.startswith("@"):
-            bot.send_message(chat_id, "❌ Username yubor (@ bilan)")
-            return
+    if not text.startswith("@"):
+        await message.answer("❌ Username yubor (@ bilan)")
+        return
 
-        bot.send_message(chat_id, "🔎 Tekshirilmoqda...")
+    await message.answer("🔎 Tekshirilmoqda...")
 
-        status = check_username(text)
+    status = check_username(text)
 
-        if status == "taken":
-            bot.send_message(chat_id, f"❌ {text} band")
-        elif status == "free":
-            bot.send_message(chat_id, f"✅ {text} bo‘sh")
-        elif status == "invalid":
-            bot.send_message(chat_id, "⚠️ Noto‘g‘ri username")
-        else:
-            bot.send_message(chat_id, "❌ Xatolik")
-
-    # 🌐 WEB MODE
+    if status == "taken":
+        await message.answer(f"❌ {text} band")
+    elif status == "free":
+        await message.answer(f"✅ {text} bo'sh")
+    elif status == "invalid":
+        await message.answer("⚠️ Noto'g'ri username")
     else:
-        username = data.get("username", "")
-
-        if not username:
-            return {"error": "username required"}
-
-        status = check_username(username)
-
-        return {
-            "username": username,
-            "status": status
-        }
+        await message.answer("❌ Xatolik")
