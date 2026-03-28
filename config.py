@@ -1,0 +1,33 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_USERNAME = os.getenv("BOT_USERNAME")
+SUPER_ADMIN_ID = int(os.getenv("SUPER_ADMIN_ID", 0))
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x]
+MAIN_CHANNEL_ID = os.getenv("MAIN_CHANNEL_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "")
+CHAT_ID    = os.getenv("CHAT_ID",    "")
+MAIN_CHANNEL_USERNAME = os.getenv("MAIN_CHANNEL_USERNAME", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+PINTEREST_API_KEY = os.getenv("PINTEREST_API_KEY")
+
+# Google OAuth
+GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", "")  # https://yoursite.railway.app/callback
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Railway Volume uchun yo'lni tekshirish
+if os.path.exists("/app/data"):
+    DATA_DIR = "/app/data"
+else:
+    DATA_DIR = os.path.join(BASE_DIR, "data")
+
+DB_PATH = os.path.join(DATA_DIR, "bot.db")
+
+# Papkani yaratish (agar yo'q bo'lsa)
+os.makedirs(DATA_DIR, exist_ok=True)

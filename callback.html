@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Animeuz Official Rasmiy Official Rasmiy Official Rasmiy Official Rasmiy Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy
+    Official Rasmiy —
+    Kirish...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      background: #02020e;
+      color: #cce4ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .box {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 40px;
+      background: rgba(8, 8, 28, .9);
+      border: 1px solid rgba(0, 212, 255, .2);
+      border-radius: 16px;
+      max-width: 380px;
+      width: 90%;
+    }
+
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: .1em;
+      font-family: monospace;
+      color: #00d4ff;
+      text-shadow: 0 0 20px rgba(0, 212, 255, .4);
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(0, 212, 255, .2);
+      border-top-color: #00d4ff;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    .status {
+      font-size: .95rem;
+      color: rgba(160, 200, 255, .7);
+      line-height: 1.5
+    }
+
+    .error-box {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .error-ico {
+      font-size: 2.5rem
+    }
+
+    .error-msg {
+      font-size: .88rem;
+      color: #ff6b6b;
+      text-align: center;
+      line-height: 1.5
+    }
+
+    .back-btn {
+      padding: 10px 24px;
+      background: rgba(0, 212, 255, .1);
+      border: 1px solid rgba(0, 212, 255, .3);
+      border-radius: 8px;
+      color: #00d4ff;
+      text-decoration: none;
+      font-size: .85rem;
+      font-weight: 600;
+      transition: all .2s;
+      cursor: pointer;
+    }
+
+    .back-btn:hover {
+      background: #00d4ff;
+      color: #000
+    }
+
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 212, 255, .3);
+      display: none
+    }
+
+    .welcome {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px
+    }
+
+    .welcome-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #cce4ff
+    }
+
+    .welcome-sub {
+      font-size: .82rem;
+      color: rgba(160, 200, 255, .6)
+    }
+  </style>
+</head>
+
+<body>
+  <div class="box">
+    <div class="logo">ANIME<span style="color:#8b5cf6">UZ</span></div>
+
+    <!-- Loading state -->
+    <div id="loadingState">
+      <div class="spinner"></div>
+      <div class="status" id="statusText">Google bilan bog'lanilmoqda...</div>
+    </div>
+
+    <!-- Success state -->
+    <div class="welcome" id="welcomeState">
+      <img class="avatar" id="userAvatar" alt="avatar">
+      <div class="welcome-name" id="userName"></div>
+      <div class="welcome-sub">Muvaffaqiyatli kirdingiz ✅</div>
+      <div class="status">Bosh sahifaga o'tilmoqda...</div>
+    </div>
+
+    <!-- Error state -->
+    <div class="error-box" id="errorState">
+      <div class="error-ico">⚠️</div>
+      <div class="error-msg" id="errorMsg">Xatolik yuz berdi</div>
+      <a class="back-btn" href="/">Bosh sahifaga qaytish</a>
+    </div>
+  </div>
+
+  <script>
+    (async function () {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const error = params.get('error');
+
+      function showError(msg) {
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('errorMsg').textContent = msg;
+        document.getElementById('errorState').style.display = 'flex';
+      }
+
+      function showSuccess(user) {
+        document.getElementById('loadingState').style.display = 'none';
+        const ws = document.getElementById('welcomeState');
+        ws.style.display = 'flex';
+        document.getElementById('userName').textContent = user.name;
+        if (user.picture) {
+          const av = document.getElementById('userAvatar');
+          av.src = user.picture;
+          av.style.display = 'block';
+        }
+        // Redirect back after 1.5s
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+      }
+
+      if (error) {
+        showError('Google kirish rad etildi: ' + error);
+        return;
+      }
+
+      if (!code) {
+        showError('Autentifikatsiya kodi topilmadi.');
+        return;
+      }
+
+      document.getElementById('statusText').textContent = 'Ma\'lumotlar tekshirilmoqda...';
+
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code,
+            redirect_uri: window.location.origin + '/callback'
+          })
+        });
+        const data = await res.json();
+
+        if (!data.ok) {
+          showError(data.error || 'Server xatosi');
+          return;
+        }
+
+        // Save token
+        localStorage.setItem('az_token', data.token);
+        localStorage.setItem('az_user', JSON.stringify(data.user));
+
+        showSuccess(data.user);
+      } catch (e) {
+        showError('Serverga ulanib bo\'lmadi: ' + e.message);
+      }
+    })();
+  </script>
+</body>
+
+</html>
