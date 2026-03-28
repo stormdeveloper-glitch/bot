@@ -168,7 +168,6 @@ async def go_back(message: Message, state: FSMContext):
 async def statistics_handler(message: Message):
     if not await is_admin(message.from_user.id):
         return
-        return
 
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM users") as c:
@@ -459,7 +458,6 @@ async def delete_channel_callback(callback: CallbackQuery):
 @router.message(F.text == "🔎 Foydalanuvchini boshqarish")
 async def manage_user_prompt(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
-        return
         return
     await message.answer(
         "<b>🔎 Foydalanuvchi ID sini yuboring:</b>",

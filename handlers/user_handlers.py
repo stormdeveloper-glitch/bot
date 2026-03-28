@@ -453,6 +453,7 @@ async def send_search_guide(target, bot):
 
 
 
+@router.callback_query(F.data == "searchByName")
 async def search_by_name_prompt(callback: CallbackQuery, state: FSMContext):
     await send_search_guide(callback.message, callback.bot)
     await callback.message.answer("<b>🔎 Anime nomini yuboring:</b>", parse_mode="HTML")
