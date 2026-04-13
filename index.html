@@ -41,6 +41,16 @@
   --glow-c:rgba(0,255,231,.22);--glow-p:rgba(191,0,255,.22);--shadow:rgba(0,0,0,.9);
   --hud-line:#00ffe7;--hud-glow:rgba(0,255,231,.7);--hud-text:#b8d4f0;
 }
+[data-theme="mirror"]{
+  --surface:rgba(255,255,255,.78);--card-bg:rgba(255,255,255,.86);
+  --border:rgba(154,169,191,.32);--border2:rgba(154,169,191,.14);
+  --accent:#7f8ea8;--accent2:#b7c0d1;--accent3:#d6dbe6;
+  --red:#ef4444;--green:#22c55e;--gold:#f59e0b;
+  --text:#1e293b;--text2:#475569;--muted:rgba(71,85,105,.65);
+  --sidebar-bg:rgba(246,248,252,.94);--nav-bg:rgba(246,248,252,.95);
+  --glow-c:rgba(184,196,216,.35);--glow-p:rgba(209,217,231,.35);--shadow:rgba(100,116,139,.2);
+  --hud-line:#7f8ea8;--hud-glow:rgba(127,142,168,.45);--hud-text:#1e293b;
+}
 
 html{scroll-behavior:smooth}
 
@@ -53,6 +63,9 @@ html{scroll-behavior:smooth}
 [data-theme="cyber3d"] body{background:#010108;color:var(--text);font-family:'Exo 2',sans-serif;min-height:100vh;overflow-x:hidden;}
 [data-theme="cyber3d"] body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(0,255,231,.015) 1px,transparent 1px) 0 0/36px 36px,linear-gradient(90deg,rgba(0,255,231,.015) 1px,transparent 1px) 0 0/36px 36px;pointer-events:none;z-index:0;}
 [data-theme="cyber3d"] #bg3d{opacity:1}
+[data-theme="mirror"] body{background:radial-gradient(circle at 20% 10%,#eef2ff 0%,#e2e8f0 40%,#dbe4f3 70%,#d7dfea 100%) fixed;color:var(--text);font-family:'Nunito',sans-serif;min-height:100vh;overflow-x:hidden;}
+[data-theme="mirror"] body::before{content:'';position:fixed;inset:0;background:linear-gradient(120deg,rgba(255,255,255,.45),transparent 28%,rgba(255,255,255,.18) 55%,transparent 75%);pointer-events:none;z-index:0;}
+[data-theme="mirror"] #bg3d{opacity:.18}
 
 #bg3d{position:fixed;inset:0;z-index:0;pointer-events:none;transition:opacity .4s}
 
@@ -360,6 +373,18 @@ html{scroll-behavior:smooth}
 }
 .pill:hover{border-color:var(--accent);color:var(--text)}
 .pill.on{background:var(--accent);border-color:var(--accent);color:#000}
+
+.mirror-wrap{display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px}
+.mirror-note{font-size:.72rem;line-height:1.5;color:var(--muted);background:var(--border2);border:1px solid var(--border);border-radius:10px;padding:10px}
+.mirror-note b{color:var(--text)}
+.mirror-cam-box{position:relative;width:100%;aspect-ratio:9/16;border-radius:12px;overflow:hidden;border:1px solid var(--border);background:linear-gradient(145deg,var(--surface),var(--card-bg));box-shadow:0 6px 20px var(--shadow)}
+.mirror-cam{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:none}
+.mirror-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;font-size:.76rem;color:var(--muted);line-height:1.5}
+.mirror-actions{display:flex;gap:8px;flex-wrap:wrap}
+.mirror-btn{flex:1;min-width:118px;padding:9px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);font-size:.73rem;font-weight:700;cursor:pointer;transition:all .2s}
+.mirror-btn:hover{border-color:var(--accent);color:var(--accent)}
+.mirror-btn.primary{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#fff;border-color:transparent}
+.mirror-btn.primary:hover{transform:translateY(-1px)}
 
 .tog{position:relative;width:44px;height:24px;flex-shrink:0}
 .tog input{opacity:0;width:0;height:0}
@@ -899,6 +924,29 @@ html{scroll-behavior:smooth}
               <button class="pill" id="th-glass"      onclick="setTheme('glass',this)">Glass</button>
               <button class="pill" id="th-futuristic" onclick="setTheme('futuristic',this)">Futuristik</button>
               <button class="pill" id="th-cyber3d"    onclick="setTheme('cyber3d',this)">3D</button>
+              <button class="pill" id="th-mirror"     onclick="setTheme('mirror',this)">Mirror</button>
+            </div>
+          </div>
+          <div class="srow">
+            <div class="srow-l">
+              <div class="srow-label">🪞 Mirror rejimi</div>
+              <div class="srow-desc">Old kamera bilan oynadek ko'rinish</div>
+            </div>
+            <div class="mirror-wrap">
+              <div class="mirror-note" id="mirrorNote">
+                <b>Xotirjam bo'ling:</b> kamera faqat shu sahifada preview uchun ishlaydi,
+                video hech qayerga yuborilmaydi va saqlanmaydi.
+              </div>
+              <div class="mirror-cam-box">
+                <video id="mirrorCam" class="mirror-cam" playsinline muted autoplay></video>
+                <div class="mirror-placeholder" id="mirrorPlaceholder">
+                  Mirror tema yoqilganda old kamerani xavfsiz tarzda ulashingiz mumkin.
+                </div>
+              </div>
+              <div class="mirror-actions">
+                <button class="mirror-btn primary" id="mirrorStartBtn" onclick="startMirrorCamera()">🔓 Kameraga ruxsat berish</button>
+                <button class="mirror-btn" id="mirrorStopBtn" onclick="stopMirrorCamera()" style="display:none">⏹ Kamerani to'xtatish</button>
+              </div>
             </div>
           </div>
           <div class="srow">
@@ -1025,23 +1073,119 @@ document.documentElement.setAttribute('data-theme',S.theme);
 document.documentElement.style.setProperty('--sd',S.spin===0?'99999s':S.spin+'s');
 document.documentElement.style.setProperty('--cw',S.card+'px');
 window.addEventListener('DOMContentLoaded',syncUI);
+let _mirrorStream=null;
 
 function syncUI(){
-  ['glass','futuristic','cyber3d'].forEach(t=>document.getElementById('th-'+t)?.classList.toggle('on',S.theme===t));
+  ['glass','futuristic','cyber3d','mirror'].forEach(t=>document.getElementById('th-'+t)?.classList.toggle('on',S.theme===t));
   const bg=document.getElementById('togBg');if(bg)bg.checked=S.bg;
   [5,9,16,0].forEach(v=>document.getElementById('sp-'+v)?.classList.toggle('on',S.spin===v));
   [150,196,260].forEach(v=>document.getElementById('cw-'+v)?.classList.toggle('on',S.card===v));
   ['all','ongoing','top','new'].forEach(v=>document.getElementById('df-'+v)?.classList.toggle('on',S.def===v));
   ['uz','ru','en'].forEach(v=>document.getElementById('lg-'+v)?.classList.toggle('on',S.lang===v));
+  updateMirrorHint();
 }
 function syncSettingsUI(){syncUI();}
-function setTheme(t,b){S.theme=t;LSS('theme',t);document.documentElement.setAttribute('data-theme',t);hiPill('th-',['glass','futuristic','cyber3d'],t);}
+function setTheme(t,b){
+  S.theme=t;LSS('theme',t);document.documentElement.setAttribute('data-theme',t);hiPill('th-',['glass','futuristic','cyber3d','mirror'],t);
+  if(t!=='mirror')stopMirrorCamera(true);
+  updateMirrorHint();
+}
 function setBg(on){S.bg=on;LSS('bg',on?'on':'off');document.getElementById('bg3d').style.opacity=on?'':'0';}
 function setSpin(v,b){S.spin=v;LSS('spin',v);document.documentElement.style.setProperty('--sd',v===0?'99999s':v+'s');hiPill('sp-',[5,9,16,0],v);}
 function setCard(v,b){S.card=v;LSS('card',v);document.documentElement.style.setProperty('--cw',v+'px');hiPill('cw-',[150,196,260],v);}
 function setDef(v,b){S.def=v;LSS('def',v);hiPill('df-',['all','ongoing','top','new'],v);}
 function setLang(v,b){S.lang=v;LSS('lang',v);hiPill('lg-',['uz','ru','en'],v);}
 function hiPill(prefix,vals,active){vals.forEach(v=>{const el=document.getElementById(prefix+v);if(el)el.classList.toggle('on',v===active);});}
+
+function updateMirrorHint(){
+  const note=document.getElementById('mirrorNote');
+  const ph=document.getElementById('mirrorPlaceholder');
+  if(!note||!ph)return;
+  if(S.theme==='mirror'){
+    if(_mirrorStream){
+      note.innerHTML="<b>Mirror faol:</b> xohlagan payt kamerani to'xtatishingiz mumkin.";
+      ph.style.display='none';
+    }else{
+      note.innerHTML="<b>Xotirjam bo'ling:</b> ruxsat bersangiz ham video faqat shu oynada ko'rinadi, saqlanmaydi va serverga yuborilmaydi.";
+      ph.style.display='flex';
+      ph.textContent="Mirror tema yoqildi. Tayyor bo'lsangiz, pastdagi tugma orqali old kamerani yoqing.";
+    }
+  }else{
+    note.innerHTML="<b>Mirror rejimi:</b> avval temani Mirror ga o'tkazing, keyin kamerani yoqsangiz bo'ladi.";
+    ph.style.display='flex';
+    ph.textContent="Old kamerani ishga tushirishdan oldin Mirror temani tanlang.";
+  }
+}
+
+async function startMirrorCamera(){
+  if(S.theme!=='mirror'){
+    alert("Avval temani Mirror ga o'tkazing.");
+    return;
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    alert("Bu qurilmada kamera API qo'llab-quvvatlanmaydi.");
+    return;
+  }
+  if(location.protocol!=='https:'&&location.hostname!=='localhost'){
+    alert("Kamera uchun HTTPS kerak (yoki localhost).");
+    return;
+  }
+  const cam=document.getElementById('mirrorCam');
+  const ph=document.getElementById('mirrorPlaceholder');
+  const st=document.getElementById('mirrorStartBtn');
+  const sp=document.getElementById('mirrorStopBtn');
+  if(!cam||!ph||!st||!sp)return;
+
+  st.disabled=true;
+  st.textContent="⏳ Kamera ulanmoqda...";
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+    _mirrorStream=stream;
+    cam.srcObject=stream;
+    cam.style.display='block';
+    ph.style.display='none';
+    st.style.display='none';
+    sp.style.display='inline-block';
+    updateMirrorHint();
+  }catch(e){
+    ph.style.display='flex';
+    ph.textContent="Ruxsat berilmadi yoki kamera topilmadi. Xohlasangiz yana urinib ko'ring.";
+    st.disabled=false;
+    st.textContent="🔓 Kameraga ruxsat berish";
+  }
+}
+
+function stopMirrorCamera(silent=false){
+  const cam=document.getElementById('mirrorCam');
+  const ph=document.getElementById('mirrorPlaceholder');
+  const st=document.getElementById('mirrorStartBtn');
+  const sp=document.getElementById('mirrorStopBtn');
+  if(_mirrorStream){
+    _mirrorStream.getTracks().forEach(t=>t.stop());
+    _mirrorStream=null;
+  }
+  if(cam){
+    cam.pause();
+    cam.srcObject=null;
+    cam.style.display='none';
+  }
+  if(sp)sp.style.display='none';
+  if(st){
+    st.style.display='inline-block';
+    st.disabled=false;
+    st.textContent="🔓 Kameraga ruxsat berish";
+  }
+  if(ph){
+    ph.style.display='flex';
+    if(S.theme==='mirror'){
+      ph.textContent="Kamera to'xtatildi. Qayta yoqish uchun tugmani bosing.";
+    }else{
+      ph.textContent="Old kamerani ishga tushirishdan oldin Mirror temani tanlang.";
+    }
+  }
+  if(!silent)updateMirrorHint();
+}
+window.addEventListener('beforeunload',()=>stopMirrorCamera(true));
 
 // ── SIDEBAR ──
 let sOpen=LS('sb')!=='closed';
@@ -1064,6 +1208,7 @@ function showPage(name,btn){
   if(name==='stats')renderStats();
   if(name==='game')switchGameTab(_activeGameTab||'card');
   if(name==='settings')syncSettingsUI();
+  if(name!=='settings')stopMirrorCamera(true);
   if(name==='global')_checkAnilistStatus();
 }
 
