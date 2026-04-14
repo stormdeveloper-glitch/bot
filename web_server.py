@@ -930,6 +930,13 @@ async def serve_callback(request):
         return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
 
 
+async def serve_qollanma(request):
+    """qollanma.html ni qaytaradi."""
+    path = os.path.join(WEBAPP_DIR, "qollanma.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+
+
 async def api_auth_google(request):
     """
     POST /api/auth/google  { code: "..." }
@@ -1115,6 +1122,7 @@ def create_app():
     app.router.add_post("/api/report",  api_report)
     # OAuth — Google
     app.router.add_get( "/callback",         serve_callback)
+    app.router.add_get( "/qollanma",         serve_qollanma)
     app.router.add_post("/api/auth/google",  api_auth_google)
     app.router.add_get( "/api/auth/me",      api_auth_me)
     app.router.add_post("/api/auth/logout",  api_auth_logout)
