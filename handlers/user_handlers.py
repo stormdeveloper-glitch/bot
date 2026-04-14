@@ -3,7 +3,7 @@ from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message, CallbackQuery, ChatJoinRequest,
-    InlineKeyboardMarkup, InlineKeyboardButton
+    InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 )
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
@@ -1502,12 +1502,19 @@ async def cashback_menu(message: Message):
 
 @router.message(F.text == "📚 Qo'llanma")
 async def guide_menu(message: Message):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT value FROM bot_texts WHERE key='guide'") as cursor:
-            row = await cursor.fetchone()
-            guide_text = row[0] if row else "📚 Qo'llanma matni hali kiritilmagan."
-
-    await message.answer(f"<b>📚 Qo'llanma</b>\n\n{guide_text}", parse_mode="HTML")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📖 Qo'llanmani ochish",
+            web_app=WebAppInfo(url="https://animeuz.up.railway.app/qollanma")
+        )]
+    ])
+    await message.answer(
+        "<b>📚 Qo'llanma</b>\n\n"
+        "Botdan to'liq foydalanish bo'yicha qo'llanma <b>Web sahifa</b> sifatida tayyorlangan.\n\n"
+        "👇 Tugmani bosib Telegram ichida oching:",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
 
 @router.message(F.text == "💵 Reklama va Homiylik")
