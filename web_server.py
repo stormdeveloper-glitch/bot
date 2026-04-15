@@ -1105,6 +1105,20 @@ async def api_game_move(request):
     return web.json_response({"ok": True, "round_result": result, "state": game.to_dict()})
 
 
+async def serve_privacy(request):
+    """privacy.html ni qaytaradi."""
+    path = os.path.join(WEBAPP_DIR, "privacy.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+
+
+async def serve_terms(request):
+    """terms.html ni qaytaradi."""
+    path = os.path.join(WEBAPP_DIR, "terms.html")
+    with open(path, "r", encoding="utf-8") as f:
+        return web.Response(text=f.read(), content_type="text/html", charset="utf-8")
+
+
 def create_app():
     app = web.Application(client_max_size=1024**3)
     app.router.add_get("/", index)
@@ -1123,6 +1137,8 @@ def create_app():
     # OAuth — Google
     app.router.add_get( "/callback",         serve_callback)
     app.router.add_get( "/qollanma",         serve_qollanma)
+    app.router.add_get( "/privacy",          serve_privacy)
+    app.router.add_get( "/terms",            serve_terms)
     app.router.add_post("/api/auth/google",  api_auth_google)
     app.router.add_get( "/api/auth/me",      api_auth_me)
     app.router.add_post("/api/auth/logout",  api_auth_logout)
