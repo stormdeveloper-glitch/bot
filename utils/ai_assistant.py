@@ -1,4 +1,5 @@
 import json
+import re
 import aiohttp
 
 from config import OPENAI_API_KEY, AI_MODEL
@@ -38,6 +39,53 @@ async def chat_with_ai(system_prompt: str, user_prompt: str, temperature: float 
         return data["choices"][0]["message"]["content"].strip()
     except Exception:
         return None
+
+
+def sanitize_ai_text(text: str, max_len: int = 260) -> str:
+    """AI javobidan markdown/ortiqcha belgilarni tozalaydi."""
+    if not text:
+        return ""
+
+    cleaned = text.replace("\r", " ").replace("\n", " ")
+    cleaned = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", cleaned)
+    cleaned = re.sub(r"[*_`~#>\[\]\(\)]", "", cleaned)
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" -:;,.")
+
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].rsplit(" ", 1)[0].strip(" -:;,.") + "..."
+
+    return cleaned
+
+
+async def generate_anime_tavsif(
+    nom: str,
+    janr: str = "",
+    holat: str = "",
+    qism: str = "",
+    yil: str = "",
+    til: str = "",
+    davlat: str = "",
+) -> str:
+    """Anime uchun qisqa tavsif generatsiya qiladi (markdownsiz)."""
+    system_prompt = (
+        "Siz anime tavsif yozuvchi yordamchisiz. "
+        "Faqat o'zbek tilida 1-2 gap yozing. "
+        "Matn oddiy bo'lsin, markdown belgilar (*, _, #, `, [ ]) ishlatmang."
+    )
+    user_prompt = (
+        f"Anime nomi: {nom}\n"
+        f"Janr: {janr or 'Noma`lum'}\n"
+        f"Holati: {holat or 'Noma`lum'}\n"
+        f"Qismlar: {qism or 'Noma`lum'}\n"
+        f"Yili: {yil or 'Noma`lum'}\n"
+        f"Tili: {til or 'Noma`lum'}\n"
+        f"Davlat: {davlat or 'Noma`lum'}\n\n"
+        "Natija: mazkur anime haqida qisqa va qiziqarli tavsif."
+    )
+
+    raw = await chat_with_ai(system_prompt, user_prompt, temperature=0.4, max_tokens=180)
+    return sanitize_ai_text(raw or "")
 
 
 async def support_ai_triage(user_text: str, faq_items: list, main_bot_username: str = "") -> dict | None:
