@@ -32,7 +32,8 @@ async def init_db():
                 fandub TEXT DEFAULT '',
                 kanal TEXT DEFAULT '',
                 liklar INTEGER DEFAULT 0,
-                desliklar INTEGER DEFAULT 0
+                desliklar INTEGER DEFAULT 0,
+                tavsif TEXT DEFAULT ''
             );
         """)
         await db.execute("""
@@ -89,6 +90,12 @@ async def init_db():
         # Yosh toifasi ustuni
         try:
             await db.execute("ALTER TABLE animelar ADD COLUMN yosh_toifa TEXT DEFAULT 'Barcha yoshlar'")
+        except Exception:
+            pass  # Ustun allaqachon bor
+
+        # AI tavsif ustuni
+        try:
+            await db.execute("ALTER TABLE animelar ADD COLUMN tavsif TEXT DEFAULT ''")
         except Exception:
             pass  # Ustun allaqachon bor
 
