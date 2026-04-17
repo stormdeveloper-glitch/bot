@@ -1,4 +1,5 @@
 import aiosqlite
+import html
 from aiogram import Router, F, Bot
 from aiogram.filters import CommandStart, Command
 from aiogram.types import (
@@ -17,6 +18,7 @@ from keyboards import (
 import urllib.parse
 from utils import check_subscription, get_subscription_keyboard, is_admin, is_maintenance, get_bot_username, is_content_restricted
 from utils.logger import log_admin_action
+from utils.ai_assistant import generate_anime_tavsif
 from states import UserStates, PaymentStates, VipStates, TransferStates
 
 async def _push(event_type, text, color="c"):
@@ -426,6 +428,22 @@ async def show_anime(message: Message, anime_id: int):
     dislikes = anime[13] or 0
     views    = anime[8] or 0
     kanal    = (anime[14] if len(anime) > 14 and anime[14] else None) or MAIN_CHANNEL_USERNAME or "—"
+    tavsif   = anime[16] if len(anime) > 16 and anime[16] else ""
+
+    if not tavsif:
+        tavsif = await generate_anime_tavsif(
+            nom=nom, janr=janr, holat=holat, qism=str(anime[3] or ""),
+            yil=str(yili or ""), til=str(tili or ""), davlat=str(davlat or ""),
+        )
+        if not tavsif:
+            tavsif = f"{nom} — {janr} janridagi anime. Qisqa qilib aytganda, tomoshabinni qiziqtiradigan syujetga ega."
+
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                await db.execute("UPDATE animelar SET tavsif=? WHERE id=?", (tavsif, anime_id))
+                await db.commit()
+        except Exception:
+            pass
 
     total_votes = likes + dislikes
     if total_votes > 0:
@@ -464,6 +482,7 @@ async def show_anime(message: Message, anime_id: int):
         f"├‣  <b>Janrlari:</b> {janr}\n"
         f"├‣  <b>Kanal:</b> {kanal}\n"
         f"├‣  <b>Ovoz:</b> {fandub}\n"
+        f"├‣  <b>Tavsif:</b> {html.escape(tavsif)}\n"
         f"├‣  <b>Yosh toifasi:</b> {yosh_toifa}\n"
         f"╰────────────────\n"
         f"{AE}  <b>Botimiz:</b> @{bot_username}\n"

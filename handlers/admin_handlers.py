@@ -11,7 +11,7 @@ from states import AdminStates, EditAnimeStates, SettingsStates, ButtonStates, P
 from utils import is_admin, is_super_admin, get_bot_username, invalidate_channel_cache, invalidate_admin_cache, is_content_restricted, invalidate_restriction_cache
 from utils.admin_manager import add_json_admin, remove_json_admin
 from utils.logger import log_admin_action
-from utils.ai_assistant import chat_with_ai
+from utils.ai_assistant import chat_with_ai, generate_anime_tavsif
 
 async def _push(event_type, text, color="c"):
     try:
@@ -1064,7 +1064,7 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
 
     # Barcha ma'lumotlarni yig'ish
     async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT nom, janri, rams, qismi, aniType, fandub, kanal FROM animelar WHERE id=?", (anime_id,)) as cursor:
+        async with db.execute("SELECT * FROM animelar WHERE id=?", (anime_id,)) as cursor:
             anime_info = await cursor.fetchone()
         # Hozir nechta qism yuklangan
         async with db.execute("SELECT COUNT(*) FROM anime_datas WHERE id=?", (anime_id,)) as cursor:
@@ -1091,9 +1091,35 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
     # Auto-post logikasi
     from config import MAIN_CHANNEL_ID, BOT_USERNAME, MAIN_CHANNEL_USERNAME
     if anime_info:
-        nom, janri, rams, total_qism, status, fandub, kanal = anime_info
+        nom = anime_info[1]
+        janri = anime_info[7]
+        rams = anime_info[2]
+        total_qism = anime_info[3]
+        status = anime_info[10]
+        fandub = anime_info[11]
+        kanal = anime_info[14] if len(anime_info) > 14 else ""
+        yili = anime_info[6]
+        tili = anime_info[5]
+        davlat = anime_info[4]
+        tavsif = anime_info[16] if len(anime_info) > 16 else ""
         fandub = fandub or "Ovoz berilmagan"
         kanal  = kanal  or ""
+        tavsif = (tavsif or "").strip()
+
+        if not tavsif:
+            tavsif = await generate_anime_tavsif(
+                nom=nom, janr=janri or "", holat=status or "", qism=str(total_qism or ""),
+                yil=str(yili or ""), til=str(tili or ""), davlat=str(davlat or ""),
+            )
+            if not tavsif:
+                tavsif = f"{nom} — {janri or 'turli'} janridagi anime. Syujetida qiziqarli voqealar rivoji mavjud."
+
+            try:
+                async with aiosqlite.connect(DB_PATH) as db_upd:
+                    await db_upd.execute("UPDATE animelar SET tavsif=? WHERE id=?", (tavsif, anime_id))
+                    await db_upd.commit()
+            except Exception:
+                pass
 
         try:
             total_qism_int = int(total_qism)
@@ -1118,6 +1144,7 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
                     f"├‣  <b>Yangi qism:</b> {ep_num}-qism 🆕\n"
                     f"├‣  <b>Janrlari:</b> {janri}\n"
                     f"├‣  <b>Ovoz:</b> {fandub}\n"
+                    f"├‣  <b>Tavsif:</b> {html.escape(tavsif)}\n"
                     f"╰────────────────\n"
                     f"{AE}  <b>Botimiz:</b> @{BOT_USERNAME}\n"
                     f"{AE}  <b>Anime ID:</b> {anime_id}"
@@ -1152,6 +1179,7 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
                 f"├‣  <b>Janrlari:</b> {janri}\n"
                 f"{kanal_line}"
                 f"├‣  <b>Ovoz:</b> {fandub}\n"
+                f"├‣  <b>Tavsif:</b> {html.escape(tavsif)}\n"
                 f"╰────────────────\n"
                 f"{AE2}  <b>Botimiz:</b> @{BOT_USERNAME}\n"
                 f"{AE2}  <b>Anime ID:</b> {anime_id}\n"
