@@ -167,6 +167,7 @@ async def init_db():
         await db.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('bot_maintenance', '0')")
         await db.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('web_app_url', '')")
         await db.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('content_restriction', '0')")
+        await db.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('start_text', 'Assalomu alaykum, {name}!\n\nAnime botiga xush kelibsiz!\nBotimizda minglab animeni o''zbek tilida tomosha qiling!')")
         
         await db.commit()
 
