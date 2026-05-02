@@ -231,10 +231,21 @@ async def command_start_handler(message: Message, state: FSMContext, bot: Bot):
             web_row = await c.fetchone()
         web_url = (web_row[0] if web_row else "") or ""
 
-    await message.answer(
-        f"{WAVE} Assalomu alaykum, <b>{message.from_user.first_name}</b>!\n\n"
+        async with db.execute(
+            "SELECT value FROM bot_settings WHERE key='start_text'"
+        ) as c:
+            st_row = await c.fetchone()
+
+    default_start = (
+        f"{WAVE} Assalomu alaykum, {{name}}!\n\n"
         f"{ANIME} Anime botiga xush kelibsiz!\n"
-        f"{STAR} Botimizda minglab animeni o'zbek tilida tomosha qiling!",
+        f"{STAR} Botimizda minglab animeni o'zbek tilida tomosha qiling!"
+    )
+    start_template = st_row[0] if st_row else default_start
+    start_text = start_template.replace("{name}", message.from_user.first_name or "")
+
+    await message.answer(
+        start_text,
         reply_markup=menu_kb(await is_admin(user_id), web_app_url=web_url), parse_mode="HTML"
     )
 
