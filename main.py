@@ -3,9 +3,10 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import BOT_TOKEN, SUPPORT_BOT_TOKEN
+from config import BOT_TOKEN, SUPPORT_BOT_TOKEN, DB_PATH
 from database import init_db, init_support_db
 from handlers import user_handlers, admin_handlers, inline_handlers
+from keyboards import load_button_styles
 from web_server import start_web_server
 
 logging.basicConfig(
@@ -55,6 +56,7 @@ async def main():
     # DB larni ishga tushirish
     await init_db()
     await init_support_db()
+    await load_button_styles(DB_PATH)
 
     # Web server
     web_runner = await start_web_server()

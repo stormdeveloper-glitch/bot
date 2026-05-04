@@ -6,7 +6,10 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from config import ADMIN_IDS, SUPER_ADMIN_ID, DB_PATH
-from keyboards import panel_kb, boshqarish_kb, menu_kb, InlineKeyboardButton
+from keyboards import (
+    panel_kb, boshqarish_kb, menu_kb, InlineKeyboardButton,
+    normalize_button_style, set_button_style
+)
 from states import AdminStates, EditAnimeStates, SettingsStates, ButtonStates, PostStates
 from utils import is_admin, is_super_admin, get_bot_username, invalidate_channel_cache, invalidate_admin_cache, is_content_restricted, invalidate_restriction_cache
 from utils.admin_manager import add_json_admin, remove_json_admin
@@ -1895,6 +1898,14 @@ SETTINGS_LABELS = {
     "start_text":     "👋 Start xabari",
 }
 
+BUTTON_STYLE_LABELS = {
+    "button_style_default": "🔵 Oddiy tugmalar rangi",
+    "button_style_positive": "🟢 Asosiy/ijobiy tugmalar rangi",
+    "button_style_negative": "🔴 Bekor/rad/o'chirish tugmalari rangi",
+    "button_style_watch": "🟢 Watchlist/saqlash tugmalari rangi",
+}
+
+
 @router.message(F.text == "*️⃣ Birlamchi sozlamalar")
 async def basic_settings_handler(message: Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
@@ -1906,14 +1917,20 @@ async def basic_settings_handler(message: Message, state: FSMContext):
 
     settings = {r[0]: r[1] for r in rows}
 
+    is_super = await is_super_admin(message.from_user.id)
+    labels = SETTINGS_LABELS | (BUTTON_STYLE_LABELS if is_super else {})
+
     text = "<b>*️⃣ Birlamchi sozlamalar:</b>\n\n"
-    for key, label in SETTINGS_LABELS.items():
+    for key, label in labels.items():
         val = settings.get(key, "—")
         text += f"{label}: <b>{val}</b>\n"
 
+    if is_super:
+        text += "\n<i>Rang qiymatlari: primary, success, danger</i>"
+
     buttons = [
         [InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"editSetting={key}")]
-        for key, label in SETTINGS_LABELS.items()
+        for key, label in labels.items()
     ]
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")
 
@@ -1921,10 +1938,15 @@ async def basic_settings_handler(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("editSetting="))
 async def edit_setting_prompt(callback: CallbackQuery, state: FSMContext):
     key = callback.data.split("=")[1]
-    label = SETTINGS_LABELS.get(key, key)
+    if key.startswith("button_style_") and not await is_super_admin(callback.from_user.id):
+        await callback.answer("❌ Bu sozlama faqat superadmin uchun!", show_alert=True)
+        return
+
+    label = (SETTINGS_LABELS | BUTTON_STYLE_LABELS).get(key, key)
     await state.update_data(setting_key=key)
+    extra = "\n\n<i>Rang uchun faqat: primary, success, danger</i>" if key.startswith("button_style_") else ""
     await callback.message.answer(
-        f"<b>✏️ {label}</b> uchun yangi qiymatni yuboring:",
+        f"<b>✏️ {label}</b> uchun yangi qiymatni yuboring:{extra}",
         parse_mode="HTML"
     )
     await state.set_state(SettingsStates.edit_value)
@@ -1950,6 +1972,15 @@ async def process_setting_value(message: Message, state: FSMContext):
     key = data.get("setting_key")
     if not key:
         return
+    if key.startswith("button_style_"):
+        if not await is_super_admin(message.from_user.id):
+            await message.answer("❌ Bu sozlama faqat superadmin uchun!")
+            return
+        normalized = normalize_button_style(value, "")
+        if not normalized:
+            await message.answer("❌ Rang qiymati noto'g'ri. Faqat: primary, success, danger")
+            return
+        value = normalized
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -1958,7 +1989,10 @@ async def process_setting_value(message: Message, state: FSMContext):
         )
         await db.commit()
 
-    label = SETTINGS_LABELS.get(key, key)
+    if key.startswith("button_style_"):
+        set_button_style(key, value)
+
+    label = (SETTINGS_LABELS | BUTTON_STYLE_LABELS).get(key, key)
     await state.clear()
     is_super = await is_super_admin(message.from_user.id)
     await message.answer(

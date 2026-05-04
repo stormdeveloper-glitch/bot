@@ -6,24 +6,61 @@ from aiogram.types import (
 PRIMARY = "primary"
 SUCCESS = "success"
 DANGER = "danger"
+STYLE_VALUES = {PRIMARY, SUCCESS, DANGER}
+
+BUTTON_STYLE_DEFAULTS = {
+    "button_style_default": PRIMARY,
+    "button_style_positive": SUCCESS,
+    "button_style_negative": DANGER,
+    "button_style_watch": SUCCESS,
+}
+BUTTON_STYLES = BUTTON_STYLE_DEFAULTS.copy()
+
+
+def normalize_button_style(value: str | None, fallback: str = PRIMARY) -> str:
+    value = (value or "").strip().lower()
+    return value if value in STYLE_VALUES else fallback
+
+
+def set_button_style(key: str, value: str) -> None:
+    if key in BUTTON_STYLES:
+        BUTTON_STYLES[key] = normalize_button_style(value, BUTTON_STYLE_DEFAULTS[key])
+
+
+async def load_button_styles(db_path: str) -> None:
+    try:
+        import aiosqlite
+
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute(
+                "SELECT key, value FROM bot_settings WHERE key LIKE 'button_style_%'"
+            ) as cursor:
+                rows = await cursor.fetchall()
+    except Exception:
+        return
+
+    for key, value in rows:
+        set_button_style(key, value)
 
 
 def _style_for(text: str, callback_data: str | None = None, style: str | None = None) -> str:
     if style:
-        return style
+        return normalize_button_style(style)
 
     raw = f"{text} {callback_data or ''}".lower()
     if any(word in raw for word in (
         "bekor", "rad", "yopish", "reject", "cancel", "close", "delete", "del",
-        "o'chir", "orqaga", "ortga", "back"
+        "o'chir", "orqaga", "ortga", "back", "dislike", "yo'q"
     )):
-        return DANGER
+        return BUTTON_STYLES["button_style_negative"]
     if any(word in raw for word in (
         "tasdiq", "approve", "confirm", "vip", "yuklash", "download", "tomosha",
-        "davom", "watchlist", "saqlash", "pul kiritish", "cashback", "like"
+        "davom", "ko'rish", "korish", "pul kiritish", "cashback", "like"
     )):
-        return SUCCESS
-    return PRIMARY
+        return BUTTON_STYLES["button_style_positive"]
+    if any(word in raw for word in ("watchlist", "saqlash")):
+        return BUTTON_STYLES["button_style_watch"]
+    return BUTTON_STYLES["button_style_default"]
 
 
 def KeyboardButton(text: str, style: str | None = None, **kwargs) -> AiogramKeyboardButton:
