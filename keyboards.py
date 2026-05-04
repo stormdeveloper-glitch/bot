@@ -47,15 +47,17 @@ def _style_for(text: str, callback_data: str | None = None, style: str | None = 
     if style:
         return normalize_button_style(style)
 
-    raw = f"{text} {callback_data or ''}".lower()
+    raw_text = text.lower()
+    raw_callback = (callback_data or "").lower()
+    raw = f"{raw_text} {raw_callback}"
     if any(word in raw for word in (
         "bekor", "rad", "yopish", "reject", "cancel", "close", "delete", "del",
-        "o'chir", "orqaga", "ortga", "back", "dislike", "yo'q"
-    )):
+        "o'chir", "orqaga", "ortga", "dislike", "yo'q"
+    )) or raw_callback.startswith(("back_", "faq_back", "cancel_", "delete_", "del_")):
         return BUTTON_STYLES["button_style_negative"]
     if any(word in raw for word in (
         "tasdiq", "approve", "confirm", "vip", "yuklash", "download", "tomosha",
-        "davom", "ko'rish", "korish", "pul kiritish", "cashback", "like"
+        "davom", "ko'rish", "korish", "pul kiritish", "like"
     )):
         return BUTTON_STYLES["button_style_positive"]
     if any(word in raw for word in ("watchlist", "saqlash")):
