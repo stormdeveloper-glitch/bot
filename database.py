@@ -67,6 +67,34 @@ async def init_db():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_watchlist_anime ON watchlist(anime_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_watch_progress_user ON watch_progress(user_id)")
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS web_profile_links (
+                device_id TEXT PRIMARY KEY,
+                telegram_id INTEGER UNIQUE NOT NULL,
+                telegram_name TEXT DEFAULT '',
+                telegram_username TEXT DEFAULT '',
+                photo_file_id TEXT DEFAULT '',
+                linked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS web_link_requests (
+                request_id TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL,
+                telegram_id INTEGER NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                decided_at DATETIME DEFAULT NULL
+            );
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS web_saved_animes (
+                device_id TEXT NOT NULL,
+                anime_id INTEGER NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (device_id, anime_id)
+            );
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS channels (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 channelId TEXT NOT NULL,

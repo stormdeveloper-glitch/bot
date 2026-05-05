@@ -1976,8 +1976,9 @@ function toggleSave(id){
   if(btn)btn.classList.toggle('saved',arr.includes(id));
   const gbtn=document.getElementById('gsave-'+id);
   if(gbtn)gbtn.classList.toggle('saved',arr.includes(id));
+  _syncSavedToTelegram(id,arr.includes(id));
 }
-function removeFromSaved(id){let arr=_getSaved().filter(x=>x!==id);_saveSavedList(arr);renderProfile();}
+function removeFromSaved(id){let arr=_getSaved().filter(x=>x!==id);_saveSavedList(arr);_syncSavedToTelegram(id,false);renderProfile();}
 function removeFromLiked(id){let arr=_getLiked().filter(x=>x!==id);_saveLiked(arr);renderProfile();}
 
 // ══ GALLERY ══
@@ -2029,10 +2030,56 @@ function _renderGalGrid(){
 }
 
 // ══ PROFILE ══
-function renderProfile(){
+async function _fetchTelegramProfile(){
+  try{const r=await fetch('/api/telegram/profile?device_id='+encodeURIComponent(_DEV));return await r.json();}catch{return{ok:false,linked:false};}
+}
+async function _syncSavedToTelegram(animeId,saved){
+  fetch('/api/profile/saved',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device_id:_DEV,anime_id:animeId,saved})}).catch(()=>{});
+}
+async function startTelegramLink(){
+  const input=document.getElementById('tg-link-id');
+  const status=document.getElementById('tg-link-status');
+  const telegramId=(input?.value||'').trim();
+  if(!telegramId){if(status)status.textContent='Telegram ID kiriting';return;}
+  if(status)status.textContent='Botga tasdiqlash xabari yuborilmoqda...';
+  try{
+    const res=await fetch('/api/telegram/link/start',{method:'POST',headers:_authHeaders(),body:JSON.stringify({device_id:_DEV,telegram_id:telegramId,saved_ids:_getSaved()})});
+    const d=await res.json();
+    if(!d.ok){if(status)status.textContent='❌ '+(d.error||'Xatolik');return;}
+    if(status)status.textContent='Botdagi xabar ostidan Tasdiqlash tugmasini bosing...';
+    pollTelegramLink(d.request_id);
+  }catch{if(status)status.textContent='❌ Serverga ulanib bo\'lmadi';}
+}
+async function pollTelegramLink(requestId){
+  const status=document.getElementById('tg-link-status');
+  for(let i=0;i<40;i++){
+    await new Promise(r=>setTimeout(r,2000));
+    try{
+      const res=await fetch(`/api/telegram/link/status?request_id=${encodeURIComponent(requestId)}&device_id=${encodeURIComponent(_DEV)}`);
+      const d=await res.json();
+      if(d.status==='approved'){if(status)status.textContent='✅ Telegram profil ulandi';renderProfile();return;}
+      if(d.status==='rejected'){if(status)status.textContent='❌ So\'rov rad etildi';return;}
+    }catch{}
+  }
+  if(status)status.textContent='⏳ Tasdiqlash kutilmoqda. Profilni qayta ochib tekshiring.';
+}
+function _telegramConnectBox(){
+  return `<div class="prof-card" style="padding:18px">
+    <div class="prof-sec-title">🔗 Telegram profilni ulash</div>
+    <div class="prof-login-desc" style="max-width:none;text-align:left;margin-bottom:12px">Telegram ID kiriting. Bot sizga tasdiqlash xabari yuboradi.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="tg-link-id" inputmode="numeric" placeholder="Telegram ID" style="flex:1;min-width:180px;padding:11px 13px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);color:var(--text)">
+      <button class="prof-google-btn" onclick="startTelegramLink()" style="min-width:130px">Davom etish</button>
+    </div>
+    <div id="tg-link-status" style="font-size:.78rem;color:var(--muted);margin-top:10px"></div>
+  </div>`;
+}
+async function renderProfile(){
   const c=document.getElementById('profileContent');
   if(!c)return;
-  if(!_gUser){
+  c.innerHTML='<div class="loading"><div class="spinner"></div>Profil yuklanmoqda...</div>';
+  const tgProfile=await _fetchTelegramProfile();
+  if(!_gUser&&!tgProfile.linked){
     const url=_getGoogleAuthUrl();
     c.innerHTML=`<div class="prof-login-wrap">
       <div class="prof-login-ico">👤</div>
@@ -2043,12 +2090,21 @@ function renderProfile(){
         Google bilan kirish
       </button>
     </div>`;
+    c.innerHTML+=_telegramConnectBox();
     return;
+  }
+  if(tgProfile.linked&&Array.isArray(tgProfile.watchlist)){
+    _saveSavedList(tgProfile.watchlist.map(Number));
   }
   const saved=_getSaved();const liked=_getLiked();
   const savedAnimes=allAnimes.filter(a=>saved.includes(a.id));
   const likedAnimes=allAnimes.filter(a=>liked.includes(a.id));
-  const avatarEl=_gUser.picture?`<img class="prof-av" src="${_gUser.picture}" onerror="this.outerHTML='<div class=prof-av-ph>👤</div>'">`:'<div class="prof-av-ph">👤</div>';
+  const displayUser=tgProfile.linked?{
+    name:tgProfile.telegram?.name||'Telegram foydalanuvchi',
+    email:(tgProfile.telegram?.username?'@'+tgProfile.telegram.username:'ID: '+tgProfile.telegram?.id),
+    picture:tgProfile.telegram?.photo_url||''
+  }:_gUser;
+  const avatarEl=displayUser.picture?`<img class="prof-av" src="${displayUser.picture}" onerror="this.outerHTML='<div class=prof-av-ph>👤</div>'">`:'<div class="prof-av-ph">👤</div>';
   const _animeItem=(a,rmFn)=>`<div class="prof-anime-item" onclick="openModal(${a.id})">
     <img class="prof-anime-img" src="${a.rams_url||''}" loading="lazy" onerror="this.style.display='none'">
     <div class="prof-anime-label">${a.nom||'Nomsiz'}</div>
@@ -2060,16 +2116,27 @@ function renderProfile(){
       <div class="prof-cover"><div class="prof-cover::after"></div></div>
       <div class="prof-av-wrap">${avatarEl}</div>
       <div class="prof-body">
-        <div class="prof-name">${_gUser.name||'Foydalanuvchi'}</div>
-        <div class="prof-email">${_gUser.email||''}</div>
+        <div class="prof-name">${displayUser.name||'Foydalanuvchi'}</div>
+        <div class="prof-email">${displayUser.email||''}</div>
         <div class="prof-stats-row">
           <div class="prof-stat"><div class="prof-stat-val">${savedAnimes.length}</div><div class="prof-stat-lbl">Saqlangan</div></div>
           <div class="prof-stat"><div class="prof-stat-val">${likedAnimes.length}</div><div class="prof-stat-lbl">Yoqtirilgan</div></div>
-          <div class="prof-stat"><div class="prof-stat-val">${allAnimes.length}</div><div class="prof-stat-lbl">Jami Anime</div></div>
+          <div class="prof-stat"><div class="prof-stat-val">${tgProfile.linked?(tgProfile.bot_profile?.status||'Oddiy'):allAnimes.length}</div><div class="prof-stat-lbl">${tgProfile.linked?'Bot holati':'Jami Anime'}</div></div>
         </div>
-        <button class="prof-logout-btn" onclick="topbarLogout();renderProfile()">🚪 Chiqish</button>
+        ${_gUser?'<button class="prof-logout-btn" onclick="topbarLogout();renderProfile()">🚪 Chiqish</button>':''}
       </div>
     </div>
+
+    ${tgProfile.linked?`<div class="prof-card">
+      <div class="prof-sec-title">🤖 Bot profili</div>
+      <div class="prof-stats-row">
+        <div class="prof-stat"><div class="prof-stat-val">${tgProfile.bot_profile?.balance||0}</div><div class="prof-stat-lbl">Hisob</div></div>
+        <div class="prof-stat"><div class="prof-stat-val">${tgProfile.bot_profile?.cashback||0}</div><div class="prof-stat-lbl">Cashback</div></div>
+        <div class="prof-stat"><div class="prof-stat-val">${tgProfile.bot_profile?.referrals||0}</div><div class="prof-stat-lbl">Referal</div></div>
+      </div>
+      <div class="prof-sec-title" style="margin-top:14px">▶️ Davom etish</div>
+      <div class="prof-empty" style="text-align:left">${(tgProfile.progress||[]).length?tgProfile.progress.map(p=>`${p.name||('Anime #'+p.anime_id)} — ${p.last_episode}-qism`).join('<br>'):'Hali ko\'rish tarixi yo\'q.'}</div>
+    </div>`:_telegramConnectBox()}
 
     <div class="prof-card">
       <div class="prof-sec-title">💾 Saqlangan Animelar (${savedAnimes.length})</div>

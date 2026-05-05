@@ -1013,6 +1013,176 @@ async def api_auth_logout(request):
 
 
 # ═══════════════════════════════════════════════
+def _get_session_user(request: web.Request) -> dict | None:
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    return _sessions.get(token)
+
+
+async def _get_telegram_profile(user_id: int) -> dict:
+    profile = {"id": user_id, "name": f"Telegram {user_id}", "username": "", "photo_url": "", "photo_file_id": ""}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getChat", params={"chat_id": user_id}) as resp:
+                data = await resp.json()
+            if data.get("ok"):
+                chat = data.get("result", {})
+                first = chat.get("first_name") or ""
+                last = chat.get("last_name") or ""
+                profile["name"] = (f"{first} {last}".strip() or chat.get("title") or profile["name"])
+                profile["username"] = chat.get("username") or ""
+        except Exception:
+            pass
+        try:
+            async with session.get(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/getUserProfilePhotos",
+                params={"user_id": user_id, "limit": 1},
+            ) as resp:
+                data = await resp.json()
+            photos = data.get("result", {}).get("photos", []) if data.get("ok") else []
+            if photos and photos[0]:
+                file_id = photos[0][-1].get("file_id", "")
+                profile["photo_file_id"] = file_id
+                async with session.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getFile", params={"file_id": file_id}) as resp:
+                    file_data = await resp.json()
+                if file_data.get("ok"):
+                    fp = file_data.get("result", {}).get("file_path", "")
+                    profile["photo_url"] = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{fp}"
+        except Exception:
+            pass
+    return profile
+
+
+async def api_telegram_link_start(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        device_id = (body.get("device_id") or "").strip()
+        telegram_id = int(str(body.get("telegram_id") or "").strip())
+        saved_ids = body.get("saved_ids") or []
+        if not device_id:
+            return web.json_response({"ok": False, "error": "device_id kerak"}, status=400)
+
+        request_id = secrets.token_urlsafe(12)
+        user = _get_session_user(request) or {}
+        who = user.get("name") or "Web foydalanuvchi"
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO web_link_requests (request_id, device_id, telegram_id, status) VALUES (?, ?, ?, 'pending')",
+                (request_id, device_id, telegram_id),
+            )
+            for anime_id in saved_ids:
+                try:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO web_saved_animes (device_id, anime_id) VALUES (?, ?)",
+                        (device_id, int(anime_id)),
+                    )
+                except Exception:
+                    pass
+            await db.commit()
+
+        text = (
+            "🔐 <b>Web profil ulash so'rovi</b>\n\n"
+            f"<b>Web profil:</b> {who}\n"
+            f"<b>Telegram ID:</b> <code>{telegram_id}</code>\n\n"
+            "Tasdiqlasangiz webdagi saqlangan animelar bot profilingiz/watchlistingiz bilan ulanadi."
+        )
+        keyboard = {"inline_keyboard": [[
+            {"text": "✅ Tasdiqlash", "callback_data": f"web_link_ok={request_id}", "style": "success"},
+            {"text": "❌ Rad etish", "callback_data": f"web_link_no={request_id}", "style": "danger"},
+        ]]}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": telegram_id, "text": text, "parse_mode": "HTML", "reply_markup": keyboard},
+            ) as resp:
+                sent = await resp.json()
+        if not sent.get("ok"):
+            return web.json_response({"ok": False, "error": sent.get("description") or "Bot xabar yubora olmadi. Avval /start qiling."}, status=400)
+        return web.json_response({"ok": True, "request_id": request_id})
+    except ValueError:
+        return web.json_response({"ok": False, "error": "Telegram ID raqam bo'lishi kerak"}, status=400)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
+async def api_telegram_link_status(request: web.Request) -> web.Response:
+    request_id = request.rel_url.query.get("request_id", "").strip()
+    device_id = request.rel_url.query.get("device_id", "").strip()
+    if not request_id or not device_id:
+        return web.json_response({"ok": False, "error": "request_id va device_id kerak"}, status=400)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT status FROM web_link_requests WHERE request_id=? AND device_id=?", (request_id, device_id)) as c:
+            row = await c.fetchone()
+    return web.json_response({"ok": True, "status": row[0] if row else "missing"})
+
+
+async def api_telegram_profile(request: web.Request) -> web.Response:
+    device_id = request.rel_url.query.get("device_id", "").strip()
+    if not device_id:
+        return web.json_response({"ok": False, "error": "device_id kerak"}, status=400)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT telegram_id FROM web_profile_links WHERE device_id=?", (device_id,)) as c:
+            link = await c.fetchone()
+        if not link:
+            return web.json_response({"ok": True, "linked": False})
+        telegram_id = int(link[0])
+        async with db.execute("SELECT status, pul, pul2, odam, ban FROM users WHERE user_id=?", (telegram_id,)) as c:
+            user_row = await c.fetchone()
+        async with db.execute("SELECT anime_id FROM watchlist WHERE user_id=? ORDER BY created_at DESC", (telegram_id,)) as c:
+            watch_rows = await c.fetchall()
+        async with db.execute("""
+            SELECT p.anime_id, p.last_episode, a.nom
+            FROM watch_progress p
+            LEFT JOIN animelar a ON a.id=p.anime_id
+            WHERE p.user_id=?
+            ORDER BY p.updated_at DESC
+            LIMIT 10
+        """, (telegram_id,)) as c:
+            progress_rows = await c.fetchall()
+
+    profile = await _get_telegram_profile(telegram_id)
+    bot_profile = {
+        "status": user_row[0] if user_row else "Oddiy",
+        "balance": user_row[1] if user_row else 0,
+        "cashback": user_row[2] if user_row else 0,
+        "referrals": user_row[3] if user_row else 0,
+        "ban": user_row[4] if user_row else "unban",
+    }
+    return web.json_response({
+        "ok": True,
+        "linked": True,
+        "telegram": profile,
+        "bot_profile": bot_profile,
+        "watchlist": [r[0] for r in watch_rows],
+        "progress": [{"anime_id": r[0], "last_episode": r[1], "name": r[2] or ""} for r in progress_rows],
+    })
+
+
+async def api_profile_saved(request: web.Request) -> web.Response:
+    try:
+        body = await request.json()
+        device_id = (body.get("device_id") or "").strip()
+        anime_id = int(body.get("anime_id"))
+        saved = bool(body.get("saved"))
+        if not device_id:
+            return web.json_response({"ok": False, "error": "device_id kerak"}, status=400)
+        async with aiosqlite.connect(DB_PATH) as db:
+            if saved:
+                await db.execute("INSERT OR IGNORE INTO web_saved_animes (device_id, anime_id) VALUES (?, ?)", (device_id, anime_id))
+            else:
+                await db.execute("DELETE FROM web_saved_animes WHERE device_id=? AND anime_id=?", (device_id, anime_id))
+            async with db.execute("SELECT telegram_id FROM web_profile_links WHERE device_id=?", (device_id,)) as c:
+                link = await c.fetchone()
+            if link:
+                if saved:
+                    await db.execute("INSERT OR IGNORE INTO watchlist (user_id, anime_id) VALUES (?, ?)", (int(link[0]), anime_id))
+                else:
+                    await db.execute("DELETE FROM watchlist WHERE user_id=? AND anime_id=?", (int(link[0]), anime_id))
+            await db.commit()
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+
 #  ANIME KARTA JANGI
 # ═══════════════════════════════════════════════
 
@@ -1142,6 +1312,10 @@ def create_app():
     app.router.add_post("/api/auth/google",  api_auth_google)
     app.router.add_get( "/api/auth/me",      api_auth_me)
     app.router.add_post("/api/auth/logout",  api_auth_logout)
+    app.router.add_post("/api/telegram/link/start", api_telegram_link_start)
+    app.router.add_get( "/api/telegram/link/status", api_telegram_link_status)
+    app.router.add_get( "/api/telegram/profile", api_telegram_profile)
+    app.router.add_post("/api/profile/saved", api_profile_saved)
     # OAuth — AniList
     app.router.add_get( "/api/auth/anilist",         api_auth_anilist)
     app.router.add_get( "/api/auth/anilist/status",  api_anilist_status)

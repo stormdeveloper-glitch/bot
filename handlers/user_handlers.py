@@ -1883,6 +1883,95 @@ async def close_callback(callback: CallbackQuery):
 
 # ─── VIP Xaridi ──────────────────────────────────────────────────────────────
 
+@router.callback_query(F.data.startswith("web_link_ok="))
+async def web_link_approve_callback(callback: CallbackQuery):
+    request_id = callback.data.split("=", 1)[1]
+    user = callback.from_user
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT device_id, telegram_id, status FROM web_link_requests WHERE request_id=?",
+            (request_id,)
+        ) as c:
+            row = await c.fetchone()
+
+        if not row:
+            await callback.answer("So'rov topilmadi yoki eskirgan.", show_alert=True)
+            return
+
+        device_id, telegram_id, status = row
+        if int(telegram_id) != user.id:
+            await callback.answer("Bu so'rov boshqa Telegram ID uchun.", show_alert=True)
+            return
+        if status != "pending":
+            await callback.answer("Bu so'rov allaqachon yakunlangan.", show_alert=True)
+            return
+
+        await db.execute(
+            "UPDATE web_link_requests SET status='approved', decided_at=CURRENT_TIMESTAMP WHERE request_id=?",
+            (request_id,)
+        )
+        await db.execute("""
+            INSERT OR REPLACE INTO web_profile_links
+                (device_id, telegram_id, telegram_name, telegram_username, linked_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (device_id, user.id, user.full_name or "", user.username or ""))
+
+        async with db.execute(
+            "SELECT anime_id FROM web_saved_animes WHERE device_id=?",
+            (device_id,)
+        ) as c:
+            saved_rows = await c.fetchall()
+        for (anime_id,) in saved_rows:
+            await db.execute(
+                "INSERT OR IGNORE INTO watchlist (user_id, anime_id) VALUES (?, ?)",
+                (user.id, anime_id)
+            )
+
+        await db.commit()
+
+    try:
+        await callback.message.edit_text(
+            "✅ Web profilingiz Telegram profilingiz bilan ulandi.\n\n"
+            "Endi webdagi saqlashlar botdagi watchlist bilan sinxron ishlaydi."
+        )
+    except Exception:
+        pass
+    await callback.answer("Ulandi!")
+
+
+@router.callback_query(F.data.startswith("web_link_no="))
+async def web_link_reject_callback(callback: CallbackQuery):
+    request_id = callback.data.split("=", 1)[1]
+    user_id = callback.from_user.id
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT telegram_id, status FROM web_link_requests WHERE request_id=?",
+            (request_id,)
+        ) as c:
+            row = await c.fetchone()
+        if not row:
+            await callback.answer("So'rov topilmadi yoki eskirgan.", show_alert=True)
+            return
+        telegram_id, status = row
+        if int(telegram_id) != user_id:
+            await callback.answer("Bu so'rov boshqa Telegram ID uchun.", show_alert=True)
+            return
+        if status == "pending":
+            await db.execute(
+                "UPDATE web_link_requests SET status='rejected', decided_at=CURRENT_TIMESTAMP WHERE request_id=?",
+                (request_id,)
+            )
+            await db.commit()
+
+    try:
+        await callback.message.edit_text("❌ Web profil ulash rad etildi.")
+    except Exception:
+        pass
+    await callback.answer("Rad etildi")
+
+
 @router.callback_query(F.data.startswith("vip_buy="))
 async def vip_purchase(callback: CallbackQuery, state: FSMContext, bot: Bot):
     """VIP paketni tanlash"""
