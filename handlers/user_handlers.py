@@ -277,6 +277,37 @@ async def check_subscription_callback(callback: CallbackQuery, bot: Bot):
 # ─── Anime ko'rsatish (ichki funksiya) ────────────────────────────────────────
 
 
+def _tme_url(value: str | None, start: str | None = None) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    value = value.replace("https://t.me/", "").replace("http://t.me/", "").lstrip("@")
+    if not value:
+        return ""
+    url = f"https://t.me/{value}"
+    if start:
+        url += f"?start={start}"
+    return url
+
+
+def _caption_link(label: str, url: str) -> str:
+    return f'<a href="{url}">{label}</a>' if url else label
+
+
+def episode_caption_footer(anime_id: int, channel_value: str | None = None) -> str:
+    from config import BOT_USERNAME, MAIN_CHANNEL_USERNAME
+
+    bot_url = _tme_url(BOT_USERNAME, str(anime_id))
+    channel_url = _tme_url(channel_value or MAIN_CHANNEL_USERNAME)
+    return (
+        "\n\n"
+        f"{_caption_link('🤖 BOTIMIZ', bot_url)} | "
+        f"{_caption_link('📢 KANAL', channel_url)}"
+    )
+
+
 async def build_episode_caption(anime_id: int, ep_num: int, anime_name: str, bot) -> str:
     """Qism caption'ini yaratadi — kanal faqat oxirgi qismda ko'rinadi."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -303,6 +334,7 @@ async def build_episode_caption(anime_id: int, ep_num: int, anime_name: str, bot
         f"<b>{anime_name}</b>\n"
         f"<i>{ep_num} - qism</i>"
         f"{kanal_line}"
+        f"{episode_caption_footer(anime_id, kanal)}"
     )
     return caption
 
@@ -320,7 +352,11 @@ async def update_prev_episode_caption(anime_id: int, prev_ep: int, anime_name: s
         return
 
     msg_id, chat_id = row[0], row[1]
-    new_caption = f"<b>{anime_name}</b>\n<i>{prev_ep} - qism</i>"
+    new_caption = (
+        f"<b>{anime_name}</b>\n"
+        f"<i>{prev_ep} - qism</i>"
+        f"{episode_caption_footer(anime_id)}"
+    )
 
     try:
         await bot.edit_message_caption(
