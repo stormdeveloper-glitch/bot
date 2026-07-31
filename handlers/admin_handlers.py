@@ -30,6 +30,53 @@ from utils.logger import get_logs_text
 router = Router()
 
 
+def _html(text: str | int | None) -> str:
+    return html.escape("" if text is None else str(text))
+
+
+def _build_anime_post_caption(
+    *,
+    title: str,
+    status: str,
+    qism: str | int,
+    janri: str,
+    fandub: str,
+    tavsif: str,
+    anime_id: int,
+    channel_name: str = "",
+    extra_lines: list[str] | None = None,
+) -> str:
+    lines = [
+        f"🔥 <b>{_html(title)}</b>",
+        "╭─────────────────────",
+    ]
+
+    if status:
+        lines.append(f"├‣ Holati: {_html(status)}")
+
+    lines.extend([
+        f"├‣ Qism: {_html(qism)}",
+        f"├‣ Ovoz berdi: {_html(fandub)}",
+    ])
+
+    if channel_name:
+        lines.append(f"├‣ Kanal: {_html(channel_name)}")
+
+    lines.append(f"├‣ Janri: {_html(janri)}")
+    lines.append(f"└‣ Tafsif: {_html(tavsif)}")
+
+    if extra_lines:
+        lines.extend(extra_lines)
+
+    lines.append("╰─────────────────────")
+    return "\n".join(lines)
+
+
+def _is_ongoing_status(status: str | None) -> bool:
+    text = (status or "").strip().lower()
+    return "ongoing" in text or "on going" in text or "davom" in text
+
+
 @router.callback_query(F.data.startswith("web2fa:"))
 async def web_admin_2fa_callback(callback: CallbackQuery):
     try:
@@ -920,9 +967,6 @@ async def process_anime_name(message: Message, state: FSMContext):
         reply_markup=boshqarish_kb(), parse_mode="HTML"
     )
     await state.set_state(AdminStates.add_anime_english_name)
-    return
-    await message.answer("<b>🎥 Jami qismlar sonini kiriting:</b>", reply_markup=boshqarish_kb(), parse_mode="HTML")
-    await state.set_state(AdminStates.add_anime_episodes)
 
 
 @router.message(AdminStates.add_anime_english_name)
@@ -945,9 +989,9 @@ async def process_anime_english_name(message: Message, state: FSMContext):
             await message.answer_photo(
                 photo=poster["poster_url"],
                 caption=(
-                    "AniList posteri topildi!\n\n"
-                    f"<b>Topilgan nom:</b> {html.escape(poster.get('matched_title', english_name))}\n"
-                    "Shu poster anime kartasida va Telegramda ishlatiladi."
+                    "✅ <b>AniList posteri topildi</b>\n\n"
+                    f"🎞 <b>Topilgan nom:</b> {html.escape(poster.get('matched_title', english_name))}\n"
+                    "Bu poster anime kartasi va Telegram postida ishlatiladi."
                 ),
                 parse_mode="HTML"
             )
@@ -960,7 +1004,7 @@ async def process_anime_english_name(message: Message, state: FSMContext):
             except Exception:
                 await message.answer("AniList'dan poster topilmadi. Oxirida rasmni qo'lda yuborasiz.")
 
-    await message.answer("<b>ðŸŽ¥ Jami qismlar sonini kiriting:</b>", reply_markup=boshqarish_kb(), parse_mode="HTML")
+    await message.answer("<b>🎥 Jami nechta qism borligini kiriting:</b>", reply_markup=boshqarish_kb(), parse_mode="HTML")
     await state.set_state(AdminStates.add_anime_episodes)
 
 
@@ -1444,18 +1488,14 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
 
             if ongoing_ch:
                 ongoing_channel_id = ongoing_ch[0]
-                AE = '<tg-emoji emoji-id="5373123172420581514">🔥</tg-emoji>'
-                ongoing_text = (
-                    f"{AE} <b>Anime nomi:</b> {nom}\n"
-                    f"╭────────────────\n"
-                    f"├‣  <b>Holati:</b> 🔸 OnGoing\n"
-                    f"├‣  <b>Yangi qism:</b> {ep_num}-qism 🆕\n"
-                    f"├‣  <b>Janrlari:</b> {janri}\n"
-                    f"├‣  <b>Ovoz:</b> {fandub}\n"
-                    f"├‣  <b>Tavsif:</b> {html.escape(tavsif)}\n"
-                    f"╰────────────────\n"
-                    f"{AE}  <b>Botimiz:</b> @{BOT_USERNAME}\n"
-                    f"{AE}  <b>Anime ID:</b> {anime_id}"
+                ongoing_text = _build_anime_post_caption(
+                    title=nom,
+                    status="OnGoing",
+                    qism=f"{ep_num}-qism",
+                    janri=janri,
+                    fandub=fandub,
+                    tavsif=tavsif,
+                    anime_id=anime_id,
                 )
                 watch_btn = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -1475,28 +1515,20 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
                 await message.answer("⚠️ Ongoing kanal topilmadi! 📢 Kanallar bo'limidan ongoing kanal qo'shing.")
 
         # ── Barcha qismlar to'liq yuklanganda asosiy kanalga post ──────────
-        if MAIN_CHANNEL_ID and total_qism_int and uploaded_count >= total_qism_int:
-            AE2 = '<tg-emoji emoji-id="5373123172420581514">🔥</tg-emoji>'
-            kanal_line = f"├‣  <b>Kanal:</b> {kanal}\n" if kanal else f"├‣  <b>Kanal:</b> @{MAIN_CHANNEL_USERNAME}\n"
-            post_text = (
-                f"{AE2} <b>Anime nomi:</b> {nom}\n"
-                f"╭────────────────\n"
-                f"├‣  <b>Holati:</b> {status}\n"
-                f"├‣  <b>Qisimi:</b> {total_qism_int}-qisim\n"
-                f"├‣  <b>Sifat:</b> 720p - 1080p\n"
-                f"├‣  <b>Janrlari:</b> {janri}\n"
-                f"{kanal_line}"
-                f"├‣  <b>Ovoz:</b> {fandub}\n"
-                f"├‣  <b>Tavsif:</b> {html.escape(tavsif)}\n"
-                f"╰────────────────\n"
-                f"{AE2}  <b>Botimiz:</b> @{BOT_USERNAME}\n"
-                f"{AE2}  <b>Anime ID:</b> {anime_id}\n"
-                f"{AE2}  <b>Reyting:</b> 5 / 5\n"
-                f"{AE2}  <b>Link:</b> https://t.me/{BOT_USERNAME}?start={anime_id}"
+        if MAIN_CHANNEL_ID and total_qism_int and uploaded_count >= total_qism_int and not _is_ongoing_status(status):
+            post_text = _build_anime_post_caption(
+                title=nom,
+                status=status,
+                qism=f"{total_qism_int}-qism",
+                janri=janri,
+                fandub=fandub,
+                tavsif=tavsif,
+                anime_id=anime_id,
+                channel_name=kanal or f"@{MAIN_CHANNEL_USERNAME}",
             )
 
             btn = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✨ Tomosha Qilish ✨", url=f"https://t.me/{BOT_USERNAME}?start={anime_id}")]
+                [InlineKeyboardButton(text="✨ Tomosha qilish", url=f"https://t.me/{BOT_USERNAME}?start={anime_id}")]
             ])
 
             try:
@@ -1504,7 +1536,7 @@ async def process_episode_file(message: Message, state: FSMContext, bot: Bot):
                     await bot.send_photo(chat_id=MAIN_CHANNEL_ID, photo=rams, caption=post_text, reply_markup=btn, parse_mode="HTML")
                 except Exception:
                     await bot.send_video(chat_id=MAIN_CHANNEL_ID, video=rams, caption=post_text, reply_markup=btn, parse_mode="HTML")
-                await message.answer(f"📢 Barcha {total_qism_int} qism yuklandi — kanal post qilindi!")
+                await message.answer(f"📢 Barcha {total_qism_int} qism yuklandi — kanalga post qilindi!")
                 await state.clear()
             except Exception as e:
                 await message.answer(f"⚠️ Auto-post kanalga yuborilmadi: {e}\n(Bot u kanalda adminligini tekshiring)")
